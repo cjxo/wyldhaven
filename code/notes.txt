@@ -1,0 +1,394 @@
+ -- New Game Thoughts / Drafts --
+
+The Description / Theme
+{
+A survival fantasy game where players explore randomly generated worlds and dungeons filled with mystical creatures and landscape.
+Survive with environmental challenges such as hunger and thirst, and collect valuable loot. Upon death, player looses their acquired
+loot, creating a high risk reward system. However, there exists a safe haven of loot called the stash. Progress through the game by
+upgrading your character, unlocking new abilities, and uncover the mysteries of fantasy realms.
+
+The Theme: Fantasy and Survival - Underground Realm.
+Take an adventure below into a vast network of interconnected dungeons and caverns.
+Encounter subterranean creatures, discover rare materials, and face challenges like
+limited oxygen, and bioluminescent creatures.
+}
+
+{
+The following is a "general" roadmap for the game.
+The specifics is below (starting at Looting Description), and can be expand upon those specifics
+
+What are the Fantasy Elements?
+
+Unique Features
+	
+What are the survival mechanics?
+	- environmental challenges
+		- this implies the player is affected by the elements!
+	- hunger / thirst / fatigue
+	- pests all around you when sleeping
+
+
+Player motivation:
+	- very imporant. think about this.
+}
+
+
+// ------------------------------------------------------------------------------------------ //
+{
+World
+	- Proceduratlly Generated
+	- random dungeons
+	- random loot in dungeons	
+	- Randomly generated worlds and dungeons.
+	- for now, terrains are forest.
+		- possible feature of world: it is static, unlike dungeons.
+		- explore different dungeon passages in world, with different difficulties needless to say.
+	- for dungeons, there will be randomly generated loot, monsters, NPCs for quests
+		- gets harder when deeper and more cool loot
+	- farm boss levels for cool loot
+	- The terrain (town, wilderness, dungeons, special places...)
+
+	- environmental challenges
+		- this implies the player is affected by the elements!
+		- pests
+			- mosquitos in forest
+			- pests biting you when sleeping
+		- fatigue
+		- coldness
+		- thirst
+		- etc. Think more
+
+World Implementation
+	I. Dungeon Mechanics
+	Dungeons are made of rows and columns of tiles. It is possible to use variable sized dungeons.
+	But what kind of dungeon though? 
+	Tiles can store the following:
+		<> The Type of tile.
+			<> The Type of the tile is stored as enums.
+				<> Wall, Grass, Floor, River, Trap, Hole, Stairs.
+				
+		<> The Properties of the tile.
+			<> The properties are stored as enums.
+				<> Walkable, Explored
+
+		<> A list of items on the tile. I will probably make this only one. Maybe.
+			
+		<> The monster on the tile. I will probably make this only one. Maybe.
+
+	Dungeons are procedurally generated: How will I create a procedurally generated dungeon?
+		<> Use binary space partition, or
+		<> Use binary space partition, but resize the rooms and connect the using a path finding
+		algorithm.
+		<> The procedurally generated dungeon could persist throughout runs.
+		
+
+World Implementaion
+	I. Dungeon Mechanics
+	
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+{
+Looting Description
+	- a game where you collect loot.
+	- you can store loot in stash.
+	- you die and loose your loot.
+	- to save loot, you must "recall" and save loot in stash
+
+Looting Implementation
+}
+
+{
+Player Identity Description
+	- health
+	- Experience System
+		- What persists throughout the game regardless of death is UPGRADES / STATISTICS / UNLOCKING NEW ABILITIES.
+		- Skill points (to upgrade attributes)
+	- inventory system
+	- attribues
+	- Skills
+	- display active effects
+	- Stash Mechanics
+		- in short, a "safe haven" for items / spells, or whatever
+	- classes
+	
+Player Identity Implementation
+	For any status, skills, or inventory items, there will be a supporting UI.
+	For example, we have a gun. We create a UI design to indicate to the user that
+	the gun in loaded / how much bullets are in / we equipped the gun.
+
+	Stash Mechanics
+	
+	Lighting
+		<> My game will be illuminated depending on the current state of the game.
+			<> Dungeon: ambient light everywhere. Areas can be lit by
+				<> Point Lights (torches, etc.)
+			<> Suppose we have two rooms. The light is only apparent in the other room,
+				and thus it has no effect on the other.
+				<> 
+
+			<> Overworld: Simulate sun using
+				<> Directional Light
+				<> Clouds occluding light
+
+		<> Line Of Sight
+			<> Resources
+				<> https://roguebasin.com/index.php/Field_of_Vision
+				<> https://roguebasin.com/index.php/Line_of_sight
+				<> http://www.adammil.net/blog/v125_roguelike_vision_algorithms.html
+				<> https://roguebasin.com/index.php/Ray_casting
+}
+
+{
+Items Description
+	- Weapons, armour, potions, scroll, food,
+	- leave details for later (i.e. minor healing potion heals you by ___)
+	- think about how items will be used and by whom.
+	- plan basic rules. Examples
+		- if you're a fighter class, hold two weapons.
+		- you need space for arrows if you equip a bow,
+		- how many rings / amulet can someone wear
+	- powerups / negative effets
+	- items / upgradable items
+	- character magic system
+	- items will be left off when dead?
+	- Items are craftable?
+	- items have lifespan: every use deminishes it.
+		- design the items however you want
+	- Abilities deal special damage, weapons deal physical (some special) damage.
+
+Items Implementation
+}
+
+{
+Spells
+}
+
+{
+Risk-Reward Features
+	- dungeons / worlds will have "recall" points, where the player is allowed to save loot.
+		- when recalling, youre not allowed to explore that dungeon anymore.
+		- when you die, you loose all your loot. the items in the stash will remain.
+		- when you die, you will have "negative effects." It persists throughout the game
+		until it has worn out.
+		- you could go deeper onto dungeons or into world forests, but it should be risky.
+
+	- hunger / thirst / fatigue
+		- persists throughout runs.
+}
+
+{
+Monsters
+}
+
+{
+-- Choose -- 
+
+	Skill tree
+		- this could be hard to implement / balance
+
+~~ Or ~~
+
+	Plain Statistics
+		- Strength, Dexterity, Constitution, Wisdom, Intelligence, Charisma
+		- Others: HitPoints, ArmourClass, MovementRate, AtackBonus
+		- active passive skills
+
+	The common theme in statistics I will allow prestige. That is, a reset in statistics,
+	but in return, ___________
+}
+
+{
+Quests
+	- can be initiated when encountering an NPC, with an exchange of some nice
+	ITEMS / Spells / Temporary Effets/ETC...!
+	- What will it be like?
+		- make it meaningfull!
+		- like "kill 10 red serpeents. They have been bothering farmers for 500 coins" (good for purchasing in stores)
+		- "talk to NPC B and give this to B. In return, I will give you 2 potions of healing"
+		- etc. etc.
+		- randomized combinatoric explosion of possible quests. this implies 
+}
+
+{
+NPC Ideas
+	- to indicate interactability, mabey interpolate the size of the rectangular box and display:
+		- question mark for quests
+		- S for shops
+}
+
+{
+Extras
+	- Game Font
+		- Dos437
+}
+
+
+Save File
+
+
+Story line
+	- For now, my game is pointless.
+
+Ideas / Extras
+	- Shops
+
+{
+
+TODO: Order of implementation
+	[] Renderer
+		[X] Implement windows backend renderer D3D11
+		[] For linux renderer: OpenGL
+		[] An immediate rendering system
+			[X] For Windows
+			[] For Linux
+		[X] UI Renderer
+	
+	[] World: grid-based
+		[] The overworld is handcrafted. It is not procedurally generated. Design a world
+    	[] Procedural Trees?
+	  	[] Forest Generator
+		[] Dungeon
+			[] Dungeon Generator.
+    			[X] Try out the "poke a hole" corridor
+	    		[] Try out resizing the rooms and do some path finding algorithms (optional).
+
+			[X] Basic Pixel Art for walls
+
+			[X] Set up renderer for dynamic lighting capabilities
+				[X] think about how light works in the dungeon
+				[X] Point light model for torches
+				[X] some blocks will illuminate areas
+
+			[X] Basic Dungeon Stair Case Levels
+				[X] Map regeneration for all levels upfront
+				[X] A tile that lets the player go down one level
+					[X] Another question: What if the player goes down to a solid object
+					instead of a floor? It indeed happened, I tested it. Whats the solution?
+				[X] A tile that lets the player go up one level
+				[X] The last level must not have a down stair case
+
+	[] Player Basics
+		[X] Line of Sight
+			<> That is, is the enemy within the player LOS, block can be seen, etc
+		
+		[] Do UI health/experince/inventory/skills
+			<> I HAVE AN IDEA! Abilities deal "special damage", Items swappable in inventory / bag
+			can contain food, torches, weapons that deal physical damage!
+      <> Debuffs - a negative effect that diminishes certain abilities of the player. (ex. no health regen for 20 seconds)
+			<> Ok so for the health and EXP (and general skill upgrades), it is located at the bottom left.
+			<> For Abilities, it is located in the bottom middle.
+			<> For Inventory (main weapon / food, etc), it is located at bottom right.
+			<> https://www.roguebasin.com/index.php/Attribute
+
+		[] Basic Health
+		[] Basic Experience
+		[] Basic Inventory
+		[] Basic Skills / Attributes
+
+		[] Research / Draft / Sketch Player Classes
+      <> https://www.roguebasin.com/index.php/Class
+		[] Bouncing Movement
+			[] Little particles on the player's feet while bouncing
+				[] This implies some particle system!
+
+		[] Set up mouse click for interaction with blocks / items / enemies
+
+	[] Monster Basics
+		[] What kind of monsters fit in our theme?
+		[] AI Monsters
+
+	[] Theme the dungeon
+		[] Design procedurally:
+			[] Research How to do this
+				[] https://roguebasin.com/index.php/Template_Dungeon_themeing/generation
+				[] https://wiki.mabinogiworld.com/view/Dungeon_Room_Types
+				[] https://rpgmaker.net/articles/3/
+			[] Think of design.
+			[] Place lights to light the room
+			[] Doors
+			[] Staircase
+			[] Dungeon next level
+
+	[] Stash System.
+
+	[] Turn-Based System.
+		-
+
+	- After the above, read the roguelike FAQ to refresh mind. Also, read my goals above
+	and possibly expand.
+}
+
+Failures / reflection:
+	- In my previous game, I did not plan. I just programmed and derived ideas along the way. Definitely bad.
+	- This time, before programming, ask myself: WHAT EXPERIENCE DO I WANT TO CREATE?
+		- What kind of items in game do I want? What kind of spells? What kind of Monsters?
+		What will my game world look like? Write it down DESCRIPTIVELY. PLEASE.
+		- 
+	- Because FAILURE ENSUED! I canclled my last game, it is like walking in the dark!
+	- So far, here is my idea: Get a prototype up and running, implementing the said features. The idea is to test where I am going.
+	Thereafter, consolidate my throughts by writing a design documentation and then create the actual game.
+
+// Cell Automata CODE
+
+#if 0
+  for (u32 i = 0; i < map_height * map_width; ++i)
+  {
+   map_tiles[i] = PCG32_NextNormalF32() < 0.45f ? 1 : 0;
+  }
+  for (u32 simulation = 0; simulation < 10; ++simulation)
+  {
+   Memory_Arena *scratch = TCTX_GetScratch(static_cast<Thread_Context *>(OS_ThreadLocalGet()), null, 0);
+   Temporary_Memory conway_temp = TemporaryMemory_Begin(scratch);
+   u32 *old_tiles = Arena_PushArray(scratch, u32, map_height * map_width);
+   MemoryCopy(old_tiles, map_tiles, sizeof(u32) * map_height * map_width);
+   
+   for (u32 tile_y = 0; tile_y < map_height; tile_y += 1)
+   {
+    for (u32 tile_x = 0; tile_x < map_width; tile_x += 1)
+    {
+     u32 index = tile_y * map_width + tile_x;
+     u8 total_neighbors_alive = (u8)(((tile_x > 0) ? old_tiles[tile_y * map_width + (tile_x - 1)] : 0) +  // L
+                                     (((tile_x > 0) && (tile_y > 0)) ? old_tiles[(tile_y - 1) * map_width + (tile_x - 1)] : 0) + // TL
+                                     ((tile_x + 1) < map_width ? old_tiles[tile_y * map_width + (tile_x + 1)] : 0) +  // R
+                                     (((tile_x + 1 < map_width) && (tile_y > 0)) ? old_tiles[(tile_y - 1) * map_width + (tile_x + 1)] : 0) + // TR
+                                     (((tile_x + 1 < map_width) && (tile_y + 1 < map_height)) ? old_tiles[(tile_y + 1) * map_width + (tile_x + 1)] : 0) + // BR
+                                     ((tile_y > 0) ? old_tiles[(tile_y - 1) * map_width + tile_x] : 0) +  // T
+                                     (((tile_x > 0) && (tile_y + 1 < map_height)) ? old_tiles[(tile_y + 1) * map_width + (tile_x - 1)] : 0) + // BL
+                                     ((tile_y + 1) < map_height ? old_tiles[(tile_y + 1) * map_width + tile_x] : 0));  // B
+     
+     if (old_tiles[index] == 1)
+     {
+      if ((total_neighbors_alive < 3))
+      {
+       map_tiles[index] = 0;
+      }
+     }
+     else
+     {
+      if (total_neighbors_alive > 4)
+      {
+       map_tiles[index] = 1;
+      }
+     }
+    }
+   }
+   
+   //MemoryCopy(map_tiles, new_tiles, sizeof(u32) * map_width * map_height);
+   TemporaryMemory_End(conway_temp);
+  }
+#endif
+  

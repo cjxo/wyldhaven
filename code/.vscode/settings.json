@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "wyld_os.h": "c",
+        "wyld_util.h": "c"
+    }
+}
