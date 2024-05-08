@@ -530,21 +530,24 @@ dun_cast_light(Dungeon_Tile *level_tiles, u32 level_width, u32 level_height,
 }
 
 fun void
-game_get_associated_player_attribute_from_stat(Stat_Type stat_type, u8 attributes[AttributeType_Count]) {
+game_get_player_attribute_increase_from_stat(Entity *player, Stat_Type stat_type,
+                                             Attribute new_attributes[AttributeType_Count]) {
+    
+    Attribute *attributes = player->attributes;
     switch (stat_type) {
         case StatType_Strength: {
-            attributes[AttributeType_MaxHP] = 1;
-            attributes[AttributeType_PhysicalDamage] = 1;
-            attributes[AttributeType_PhysicalDefence] = 1;
+            new_attributes[AttributeType_MaxHP].value_f32 = attributes[AttributeType_MaxHP].value_f32 + 0.4f;
+            new_attributes[AttributeType_PhysicalDamage].value_f32 = attributes[AttributeType_PhysicalDamage].value_f32 + 0.07f;
+            new_attributes[AttributeType_PhysicalDefence].value_f32 = attributes[AttributeType_PhysicalDefence].value_f32 + 0.05f;
         } break;
 
         case StatType_Magic: {
-            attributes[AttributeType_SpecialDamage] = 1;
-            attributes[AttributeType_SpecialDefence] = 1;
+            new_attributes[AttributeType_SpecialDamage].value_f32 = attributes[AttributeType_SpecialDamage].value_f32 + 0.05f;
+            new_attributes[AttributeType_SpecialDefence].value_f32 = attributes[AttributeType_SpecialDefence].value_f32 + 0.04f;
         } break;
 
         case StatType_Dexterity: {
-            attributes[AttributeType_Accuracy] = 1;
+            new_attributes[AttributeType_Accuracy].value_f32 = attributes[AttributeType_Accuracy].value_f32 + 0.05f;
         } break;
 
         case StatType_Agility: {
@@ -552,12 +555,12 @@ game_get_associated_player_attribute_from_stat(Stat_Type stat_type, u8 attribute
         } break;
 
         case StatType_Vitality: {
-            attributes[AttributeType_MaxHP] = 1;
-            attributes[AttributeType_HealPerSecond] = 1;
+            new_attributes[AttributeType_MaxHP].value_f32 = attributes[AttributeType_MaxHP].value_f32 + 0.05f;
+            new_attributes[AttributeType_HealPerSecond].value_f32 = attributes[AttributeType_HealPerSecond].value_f32 + 0.01f;
         } break;
     
         case StatType_Luck: {
-            attributes[AttributeType_Accuracy] = 1;
+            new_attributes[AttributeType_Accuracy].value_f32 = attributes[AttributeType_Accuracy].value_f32 + 0.02f;
         } break;
 
         default: {
@@ -710,8 +713,8 @@ game_ui_player_info(Game_State *game_state) {
                 ui_push_background_colour(state, attribute_upgrades_bg_col);
                 ui_push_border_colour(state, attribute_upgrades_border_col);
                 ui_push_edge_thickness(state, 1.0f);
-
-                u8 attributes_to_highlight[AttributeType_Count] = {0};
+                
+                Attribute new_attributes[AttributeType_Count] = { 0 };
                 ui_push_vert_layout(state, str8("player-attrib-upgrades"), v2f_make(12.0f, 12.0f), v2f_make(0.0f, 8.0f)); {
                     ui_pop_background_colour(state);
                     ui_pop_edge_thickness(state);
@@ -730,7 +733,7 @@ game_ui_player_info(Game_State *game_state) {
                     ui_do_labelf(state, str8("Stat Points: %u"), player->stat_pts_to_spend);
                     ui_pop_text_colour(state);
                     
-                    ui_push_hori_layout(state, str8("player-attrib-state-display"), v2f_make(0.0f, 0.0f), v2f_make(20.0f, 0.0f)); {
+                    ui_push_hori_layout(state, str8("player-attrib-state-display"), v2f_make(0.0f, 0.0f), v2f_make(16.0f, 0.0f)); {
                         ui_push_anchor_y(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
                         ui_push_offset_y(state, ui_make_offset(UIOffsetType_Relative, UIMetricType_Percentage, 0.5f));
                         ui_push_vert_layout(state, str8("player-attrib-names"), v2f_make(0.0f, 0.0f), v2f_make(0.0f, 7.0f)); {
@@ -769,7 +772,11 @@ game_ui_player_info(Game_State *game_state) {
                             Memory_Arena *format_memory = arena_get_scratch(&(game_state->main_arena), 1);
                             Temporary_Memory format_temp_memory = temp_mem_begin(format_memory);
                             for (u32 stat_idx = 0; stat_idx < StatType_Count; ++stat_idx) {
+                                ui_push_anchor_x(state, ui_make_anchor(UIMetricType_Percentage, 1.0f));
+                                ui_push_offset_x(state, ui_make_offset(UIOffsetType_Relative, UIMetricType_Percentage, 1.0f));
                                 ui_push_hori_layout(state, str8_format(format_memory, str8("PlayerStat%u###Upgrade"), stat_idx), v2f_make(0.0f, 0.0f), v2f_make(0.0f, 0.0f)); {
+                                    ui_pop_anchor_x(state);
+                                    ui_pop_offset_x(state);
                                     ui_push_anchor_y(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
                                     ui_push_offset_y(state, ui_make_offset(UIOffsetType_Relative, UIMetricType_Percentage, 0.5f));
                                     ui_do_labelf(state, str8("PlayerStat%u###%u"), stat_idx, player->current_stat_pts_per_type[stat_idx]);
@@ -790,8 +797,10 @@ game_ui_player_info(Game_State *game_state) {
                                     ui_pop_anchor_y(state);
                                     if (btn_interact.hover) {
                                         // If we hover, then highlight in green the possible player attribute
-                                        // improvement(s). 
-                                        game_get_associated_player_attribute_from_stat((Stat_Type)stat_idx, attributes_to_highlight);
+                                        // improvement(s).
+                                        game_get_player_attribute_increase_from_stat(&game_state->player,
+                                                                                     (Stat_Type)stat_idx,
+                                                                                     new_attributes);
                                     }
 
                                     if (player->stat_pts_to_spend && btn_interact.released) {
@@ -807,17 +816,24 @@ game_ui_player_info(Game_State *game_state) {
                                         //  <> So, under the assumption of fixed increments, the rate depends on the class
                                         //     of the player. Well, I haven't defined player classes yet, thus for now,
                                         //     we do fixed increments of some arbitrary choice.
+
+                                        // APPLY UPGRADES
+                                        for (u32 attribute_idx = 0; attribute_idx < AttributeType_Count; ++attribute_idx) {
+                                            if (new_attributes[attribute_idx].value_f32 > 0.0f) {
+                                                game_state->player.attributes[attribute_idx].value_f32 = new_attributes[attribute_idx].value_f32;
+                                            }
+                                        }
                                     }
                                 } ui_pop_layout(state);
                             }
                             temp_mem_end(format_temp_memory);
                         } ui_pop_layout(state);
-                        //ui_pop_edge_thickness(state);
+                        ui_pop_edge_thickness(state);
                     } ui_pop_layout(state);
-                    ui_pop_edge_thickness(state);
+//                    ui_pop_edge_thickness(state);
                     ui_pop_transparent_background(state);
                 } ui_pop_layout(state);
-                
+
                 ui_push_background_colour(state, attribute_upgrades_bg_col);
                 ui_push_border_colour(state, attribute_upgrades_border_col);
                 ui_push_edge_thickness(state, 1.0f);
@@ -835,7 +851,6 @@ game_ui_player_info(Game_State *game_state) {
                     
                     ui_push_vert_layout(state, str8("Attribute-Improvements"), v2f_make(0.0f, 0.0f), v2f_make(0.0f, 0.0f)); {
                         //-
-                        //ui_push_edge_thickness(state, 1.0f);
                         Memory_Arena *format_memory = arena_get_scratch(&(game_state->main_arena), 1);
                         Temporary_Memory temp_format_memory = temp_mem_begin(format_memory);
                         ui_push_corner_roundness(state, 0.0f);
@@ -851,28 +866,6 @@ game_ui_player_info(Game_State *game_state) {
                             "Acc: ",
                         };
                         
-                        read_only f32
-                        debug_test_current_values[] = {
-                            100.0f,
-                            0.25f,
-                            75.0f,
-                            75.0f,
-                            75.0f,
-                            75.0f, 
-                            75.0f,
-                        };
-
-                        read_only f32
-                        debug_test_upgrade_values[] = {
-                            102.5f,
-                            0.30f,
-                            75.0f,
-                            75.0f,
-                            75.0f,
-                            75.0f, 
-                            75.0f,
-                        };
-
                         read_only v2f
                         texture_clip_p[] = {
                             { 16.0f * 3.0f, 6.0f * 16.0f },
@@ -893,12 +886,12 @@ game_ui_player_info(Game_State *game_state) {
                                 ui_push_text_padding_x(state, 0.0f);
                                 ui_push_hori_layout(state, str8_format(format_memory, str8("PlayerAttributeNumber(%d)###Display"), attribute_idx), v2f_make(0.0f, 0.0f), v2f_make(0.0f, 0.0f)); {
                                     ui_do_labelf(state, str8("PlayerAttributeNumber(%d)###%s"), attribute_idx, attribute_display[attribute_idx]);
-                                    if (attributes_to_highlight[attribute_idx]) {
+                                    if (new_attributes[attribute_idx].value_f32 > 0.0f) {
                                         ui_push_text_colour(state, rgba_from_hsva(119.0f, 75.0f, 71.0f, 1.0f));
-                                        ui_do_labelf(state, str8("PlayerAttributeNumber(%d)###%0.2f"), attribute_idx, debug_test_upgrade_values[attribute_idx]);
+                                        ui_do_labelf(state, str8("PlayerAttributeNumber(%d)###%0.2f"), attribute_idx, new_attributes[attribute_idx].value_f32);
                                         ui_pop_text_colour(state);
                                     } else {
-                                        ui_do_labelf(state, str8("PlayerAttributeNumber(%d)###%0.2f"), attribute_idx, debug_test_current_values[attribute_idx]);
+                                        ui_do_labelf(state, str8("PlayerAttributeNumber(%d)###%0.2f"), attribute_idx, game_state->player.attributes[attribute_idx].value_f32);
                                     }
                                 } ui_pop_layout(state);
                                 ui_pop_text_padding_x(state);
@@ -1121,6 +1114,31 @@ game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_
     r2d_buffer->light_constants.lights[0].is_enabled = true;
 }
 
+fun void
+game_init_player(Game_State *game_state) {
+    Entity *player = &(game_state->player);
+    player->type = EntityType_Player;
+    player->p = v2f_make(64, 64);
+    player->stat_pts_to_spend = 100;
+
+    // base stats.
+    // TODO: soon this should be based on player class
+    player->attributes[AttributeType_MaxHP].value_f32 = 40.0f;
+    player->attributes[AttributeType_HealPerSecond].value_f32 = 0.20f;
+
+    // we should think about what these value represent. I think this should be percentage increase 
+    // in base damages of weapons / abilities
+    player->attributes[AttributeType_PhysicalDamage].value_f32 = 5.0f;
+    player->attributes[AttributeType_SpecialDamage].value_f32 = 5.0f;
+
+    // we should think about what these value represent. I think this should be percentage increase 
+    // in base defences of armours.
+    player->attributes[AttributeType_PhysicalDefence].value_f32 = 5.0f;
+    player->attributes[AttributeType_SpecialDefence].value_f32 = 5.0f;
+    
+    player->attributes[AttributeType_Accuracy].value_f32 = 3.0f;
+}
+
 int __stdcall
 WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdShow) {
     unused(hInstance);
@@ -1145,9 +1163,8 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
         game_state.main_arena = arena_reserve(mb(16));
         ui_initialize(&(game_state.ui_state), &window->input, &r2d_buffer);
         game_state.sprite_sheet = r2d_texture_from_file(&r2d_buffer, str8("..\\data\\assets\\texture\\tiles.png"));
-        
-        game_state.player.p = v2f_make(64, 64);
-        game_state.player.stat_pts_to_spend = 3;
+
+        game_init_player(&game_state);
         game_state.camera = cam2d_make(v2f_make(1280.0f, 720.0f), v2f_make(2.0f, 2.0f), &game_state.player);
         
         game_state.has_initialized = true;

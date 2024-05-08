@@ -91,12 +91,25 @@ enum {
 typedef u16 Entity_Type;
 enum {
     EntityType_Player,
+    EntityType_Count,
 };
+
+typedef struct {
+    union {
+        f32 value_f32;
+        u32 value_u32;
+    };
+} Attribute;
 
 typedef struct {
     u32 stat_pts_to_spend;
     u32 current_stat_pts_per_type[StatType_Count];
+    Attribute attributes[AttributeType_Count];
+    
+    Entity_Type type;
     v2f p;
+
+
 } Entity;
 
 typedef struct {
