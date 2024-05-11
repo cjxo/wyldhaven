@@ -362,6 +362,9 @@ ui_pop_background_colour(UI_State *state) {
 #define ui_push_transparent_background(state) ui_push_background_colour(state, rgba_make(0.0f, 0.0f, 0.0f, 0.0f))
 #define ui_pop_transparent_background(state) ui_pop_background_colour(state)
 
+#define ui_push_transparent_border(state) ui_push_border_colour(state, rgba_make(0.0f, 0.0f, 0.0f, 0.0f))
+#define ui_pop_transparent_border(state) ui_pop_border_colour(state)
+
 inl void
 ui_push_offset(UI_State *state, UI_Offset uniform_offset) {
     ui_push_offset_x(state, uniform_offset);

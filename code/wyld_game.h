@@ -85,7 +85,19 @@ enum {
     AttributeType_PhysicalDefence,
     AttributeType_SpecialDefence,
     AttributeType_Accuracy,
+    
+    // Mana 
+    // energy
+    
+
     AttributeType_Count,
+};
+
+typedef u8 Effect_Type;
+enum {
+    EffectType_Buff,
+    EffectType_Debuff,
+    EffectType_Count,
 };
 
 typedef u16 Entity_Type;
@@ -101,6 +113,19 @@ typedef struct {
     };
 } Attribute;
 
+// TODO: implement buffs debuffs after implementing physical actions / special abilities
+typedef struct Effect Effect;
+struct Effect {
+    Effect_Type type;
+    union {
+        f32 value_f32;
+        u32 value_u32;
+    };
+
+    Effect *next;
+    Effect *prev;
+};
+
 typedef struct {
     u32 stat_pts_to_spend;
     u32 current_stat_pts_per_type[StatType_Count];
@@ -108,8 +133,16 @@ typedef struct {
     
     Entity_Type type;
     v2f p;
+    f32 health;
 
+    // TODO(christian): Implement attributes for these 
+    // and create pixel art for these
+    u32 mana; // used for special abilities
+    f32 energy; // used for physical abilities
 
+    u64 level;
+    u64 exp;
+    u64 max_exp;
 } Entity;
 
 typedef struct {

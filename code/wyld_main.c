@@ -573,8 +573,6 @@ fun void
 game_ui_player_info(Game_State *game_state) {
 	UI_State *state = &(game_state->ui_state);
     Entity *player = &(game_state->player);
-    f32 initial_health = 100.0f;
-    f32 max_health = 100.0f;
     f32 healthbar_width = 300.0f;
     f32 healthbar_height = 15.0f;
     
@@ -663,7 +661,8 @@ game_ui_player_info(Game_State *game_state) {
 		ui_push_tr_background_colour(state, rgba_from_hsva(15, 80.0f, 60.0f, 1.0f));
 		ui_push_br_background_colour(state, rgba_from_hsva(15, 80.0f, 60.0f, 1.0f));
 		ui_do_progression(state, _str8(player-health-bar), UIProgression_Gradient, UIProgressionFlag_ClipBackgroundColour,
-						  UIAxis_X, initial_health, max_health, healthbar_width, healthbar_height);
+						  UIAxis_X, player->health, player->attributes[AttributeType_MaxHP].value_f32,
+                          healthbar_width, healthbar_height);
 		ui_pop_tl_background_colour(state);
 		ui_pop_bl_background_colour(state);
 		ui_pop_tr_background_colour(state);
@@ -671,19 +670,19 @@ game_ui_player_info(Game_State *game_state) {
 		ui_pop_border_colour(state);
         
 		// NOTE(christian): exp bar
-		ui_push_border_colour(state, rgba_from_hsva(204, 99.0f, 60.0f, 1.0f));
-		ui_push_tl_background_colour(state, rgba_from_hsva(224, 80.0f, 20.0f, 1.0f));
-		ui_push_bl_background_colour(state, rgba_from_hsva(224, 80.0f, 20.0f, 1.0f));
-		ui_push_tr_background_colour(state, rgba_from_hsva(244, 50.0f, 90.0f, 1.0f));
-		ui_push_br_background_colour(state, rgba_from_hsva(244, 50.0f, 90.0f, 1.0f));
-		ui_do_progression(state, _str8(player-exp-bar), UIProgression_Gradient, UIProgressionFlag_ClipBackgroundColour,
-						  UIAxis_X, initial_exp, max_exp, exp_width, exp_height);
-		ui_pop_tl_background_colour(state);
-		ui_pop_bl_background_colour(state);
-		ui_pop_tr_background_colour(state);
-		ui_pop_br_background_colour(state);
-		ui_pop_border_colour(state);	
-		
+        ui_push_border_colour(state, rgba_from_hsva(204, 99.0f, 60.0f, 1.0f));
+        ui_push_tl_background_colour(state, rgba_from_hsva(224, 80.0f, 20.0f, 1.0f));
+        ui_push_bl_background_colour(state, rgba_from_hsva(224, 80.0f, 20.0f, 1.0f));
+        ui_push_tr_background_colour(state, rgba_from_hsva(244, 50.0f, 90.0f, 1.0f));
+        ui_push_br_background_colour(state, rgba_from_hsva(244, 50.0f, 90.0f, 1.0f));
+        ui_do_progression(state, str8("player-exp-bar"), UIProgression_Gradient, UIProgressionFlag_ClipBackgroundColour,
+                          UIAxis_X, initial_exp, max_exp, exp_width, exp_height);
+        ui_pop_tl_background_colour(state);
+        ui_pop_bl_background_colour(state);
+        ui_pop_tr_background_colour(state);
+        ui_pop_br_background_colour(state);
+        ui_pop_border_colour(state);
+    
 		ui_pop_corner_roundness(state);
 		ui_pop_edge_thickness(state);
     } ui_pop_layout(state);
@@ -699,27 +698,67 @@ game_ui_player_info(Game_State *game_state) {
         v4f attribute_upgrades_bg_col = rgba_from_hsva(330.0f, 47.0f, 26.0f, 1.0);
         v4f attribute_upgrades_border_col = rgba_from_hsva(10.0f, 25.0f, 80.0f, 1.0);
         
-        ui_push_transparent_background(state);
-        ui_push_edge_thickness(state, 0.0f);
+        ui_push_background_colour(state, attribute_upgrades_bg_col);
+        ui_push_border_colour(state, attribute_upgrades_border_col);
         ui_push_anchor(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
         ui_push_offset(state, ui_make_offset(UIOffsetType_Absolute, UIMetricType_Percentage, 0.5f));
-        ui_push_vert_layout(state, str8("player-attrib-box"), v2f_make(0.0f, 0.0f), v2f_make(0.0f, 4.0f)); {
+        ui_push_vert_layout(state, str8("player-attrib-box"), v2f_make(8.0f, 8.0f), v2f_make(0.0f, 4.0f)); {
+            ui_pop_border_colour(state);
+            ui_pop_background_colour(state);
             ui_pop_offset(state);
             ui_pop_anchor(state);
+
+            ui_push_transparent_background(state);
+            ui_push_transparent_border(state);
+            ui_push_offset_x(state, ui_make_offset(UIOffsetType_Relative, UIMetricType_Percentage, 0.5f));
+            ui_push_anchor_x(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
+            ui_do_label(state, str8("<Player Class> Player Name"));
+            ui_pop_offset_x(state);
+            ui_pop_anchor_x(state);
+            ui_pop_transparent_border(state);
+            ui_pop_transparent_background(state);
             
+            ui_push_edge_thickness(state, 0.0f);
+            ui_push_transparent_background(state);
             ui_push_hori_layout(state, str8("player-attrib-upgrades-container"), v2f_make(0.0f, 0.0f), v2f_make(4.0f, 0.0f)); {
                 ui_pop_transparent_background(state);
-                ui_pop_edge_thickness(state);
-                ui_push_background_colour(state, attribute_upgrades_bg_col);
-                ui_push_border_colour(state, attribute_upgrades_border_col);
-                ui_push_edge_thickness(state, 1.0f);
+                
+                ui_push_tl_background_colour(state, attribute_upgrades_bg_col);
+                ui_push_tr_background_colour(state, attribute_upgrades_bg_col);
+                ui_push_bl_background_colour(state, rgba_from_hsva(330.0f, 35.0f, 48.0f, 1.0f));
+                ui_push_br_background_colour(state, rgba_from_hsva(330.0f, 35.0f, 48.0f, 1.0f));
+                ui_push_vert_layout(state, str8("player-details-stuff"), v2f_make(12.0f, 12.0f), v2f_make(0.0f, 0.0f)); {
+                    ui_pop_edge_thickness(state);
+                    ui_pop_background_colour(state);
+
+                    ui_push_transparent_background(state);
+                    ui_push_transparent_border(state);
+                    
+                    ui_do_labelf(state, str8("Level %llu"), player->level);
+                    ui_do_labelf(state, str8("Health: %.2f/%.2f"), player->health, player->attributes[AttributeType_MaxHP].value_f32);
+                    ui_do_labelf(state, str8("EXP: %llu/%llu"), player->exp, player->max_exp);
+                    ui_do_labelf(state, str8("Mana: %u/%u"), player->mana, 100);
+                    ui_do_labelf(state, str8("Energy: %.2f/%.2f"), player->energy, 100.0f);
+
+                    ui_pop_transparent_border(state);
+                    ui_pop_transparent_background(state);
+                } ui_pop_layout(state);
                 
                 Attribute new_attributes[AttributeType_Count] = { 0 };
+
+                ui_push_tl_background_colour(state, attribute_upgrades_bg_col);
+                ui_push_tr_background_colour(state, attribute_upgrades_bg_col);
+                ui_push_bl_background_colour(state, rgba_from_hsva(330.0f, 35.0f, 48.0f, 1.0f));
+                ui_push_br_background_colour(state, rgba_from_hsva(330.0f, 35.0f, 48.0f, 1.0f));
+
+                ui_push_edge_thickness(state, 0.0f);
                 ui_push_vert_layout(state, str8("player-attrib-upgrades"), v2f_make(12.0f, 12.0f), v2f_make(0.0f, 8.0f)); {
                     ui_pop_background_colour(state);
                     ui_pop_edge_thickness(state);
                     
-                    ui_push_transparent_background(state);
+                    //ui_push_border_colour(state, attribute_upgrades_border_col);
+
+#if 0
                     ui_push_edge_thickness(state, 0.0f);
                     ui_push_offset_x(state, ui_make_offset(UIOffsetType_Absolute, UIMetricType_Percentage, 0.5f));
                     ui_push_anchor_x(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
@@ -727,12 +766,15 @@ game_ui_player_info(Game_State *game_state) {
                     ui_pop_offset_x(state);
                     ui_pop_anchor_x(state);
                     ui_pop_edge_thickness(state);
+#endif
                     
+                    ui_push_transparent_background(state);
+                    //ui_pop_transparent_border(state);
                     ui_push_edge_thickness(state, 0.0f);
                     ui_push_text_colour(state, text_colour);
                     ui_do_labelf(state, str8("Stat Points: %u"), player->stat_pts_to_spend);
                     ui_pop_text_colour(state);
-                    
+ 
                     ui_push_hori_layout(state, str8("player-attrib-state-display"), v2f_make(0.0f, 0.0f), v2f_make(16.0f, 0.0f)); {
                         ui_push_anchor_y(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
                         ui_push_offset_y(state, ui_make_offset(UIOffsetType_Relative, UIMetricType_Percentage, 0.5f));
@@ -834,21 +876,31 @@ game_ui_player_info(Game_State *game_state) {
                     ui_pop_transparent_background(state);
                 } ui_pop_layout(state);
 
-                ui_push_background_colour(state, attribute_upgrades_bg_col);
-                ui_push_border_colour(state, attribute_upgrades_border_col);
-                ui_push_edge_thickness(state, 1.0f);
+                ui_push_tl_background_colour(state, attribute_upgrades_bg_col);
+                ui_push_tr_background_colour(state, attribute_upgrades_bg_col);
+                ui_push_bl_background_colour(state, rgba_from_hsva(330.0f, 35.0f, 48.0f, 1.0f));
+                ui_push_br_background_colour(state, rgba_from_hsva(330.0f, 35.0f, 48.0f, 1.0f));
+
+                //ui_push_background_colour(state, attribute_upgrades_bg_col);
+                ui_push_edge_thickness(state, 0.0f);
                 ui_push_vert_layout(state, str8("player-attrib-improvements"), v2f_make(24.0f, 12.0f), v2f_make(0.0f, 8.0f)); {
+                    ui_pop_edge_thickness(state);
                     ui_pop_background_colour(state);
                     ui_pop_edge_thickness(state);
                     
-                    ui_push_transparent_background(state);
-                    ui_push_edge_thickness(state, 0.0f);
+                    ui_push_border_colour(state, attribute_upgrades_border_col);
+                    ui_push_edge_thickness(state, 1.0f);
+
+#if 0
                     ui_push_offset_x(state, ui_make_offset(UIOffsetType_Absolute, UIMetricType_Percentage, 0.5f));
                     ui_push_anchor_x(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
                     ui_do_label(state, str8("Attribute###Attributes"));
                     ui_pop_offset_x(state);
                     ui_pop_anchor_x(state);
-                    
+#endif
+
+                    ui_push_edge_thickness(state, 0.0f);
+                    ui_push_transparent_background(state);
                     ui_push_vert_layout(state, str8("Attribute-Improvements"), v2f_make(0.0f, 0.0f), v2f_make(0.0f, 0.0f)); {
                         //-
                         Memory_Arena *format_memory = arena_get_scratch(&(game_state->main_arena), 1);
@@ -1000,6 +1052,12 @@ game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_
             }
         }
     }
+
+    if (player->health < player->attributes[AttributeType_MaxHP].value_f32) {
+        player->health += player->attributes[AttributeType_HealPerSecond].value_f32 * dt_step;
+
+        player->health = minimum(player->health, player->attributes[AttributeType_MaxHP].value_f32);
+    }
     
     dun_cast_light(level->tiles, level->width, level->height, game_state->tile_dims, player->p, 8, true);
     
@@ -1119,6 +1177,7 @@ game_init_player(Game_State *game_state) {
     Entity *player = &(game_state->player);
     player->type = EntityType_Player;
     player->p = v2f_make(64, 64);
+    player->level = 1;
     player->stat_pts_to_spend = 100;
 
     // base stats.
@@ -1137,6 +1196,8 @@ game_init_player(Game_State *game_state) {
     player->attributes[AttributeType_SpecialDefence].value_f32 = 5.0f;
     
     player->attributes[AttributeType_Accuracy].value_f32 = 3.0f;
+    
+    player->health = player->attributes[AttributeType_MaxHP].value_f32 * 0.5f;
 }
 
 int __stdcall
