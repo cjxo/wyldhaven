@@ -8,8 +8,6 @@
 #include <d3dcompiler.h>
 #include <dxgidebug.h>
 #include <timeapi.h>
-#undef near
-#undef far
 
 #define w32_window_class_name "windows_windows_windows_windows_HWND"
 

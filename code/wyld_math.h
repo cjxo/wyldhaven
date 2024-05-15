@@ -70,7 +70,10 @@ typedef struct {
 } RectS32;
 
 #define pi_f32 3.141592653589f
-#define two_pi_f32 6.28318530718
+#define two_pi_f32 6.28318530718f
+
+#define pi_f64 3.141592653589
+#define two_pi_f64 6.28318530718
 
 //~ NOTE(christian): math tool
 inl f32 to_radians(f32 degrees);
@@ -130,7 +133,7 @@ inl v4f v4f_make(f32 x, f32 y, f32 z, f32 w);
 inl v4f rgba_from_hsva(f32 hue, f32 saturation, f32 value, f32 alpha);
 
 //~ NOTE(christian): m44s
-inl m44 m44_make_ortho_lh_z01(f32 left, f32 right, f32 top, f32 bottom, f32 near, f32 far);
+inl m44 m44_make_ortho_lh_z01(f32 left, f32 right, f32 top, f32 bottom, f32 near_plane, f32 far_plane);
 inl v4f m44_mul_vec4(m44 *m, v4f v);
 
 //~ NOTE(christian): ease

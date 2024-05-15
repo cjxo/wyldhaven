@@ -312,12 +312,12 @@ rgba_from_hsva(f32 hue, f32 saturation, f32 value, f32 alpha) {
 
 //~ NOTE(christian): m44s
 inl m44
-m44_make_ortho_lh_z01(f32 left, f32 right, f32 top, f32 bottom, f32 near, f32 far) {
+m44_make_ortho_lh_z01(f32 left, f32 right, f32 top, f32 bottom, f32 near_plane, f32 far_plane) {
     m44 result;
     result.r0 = v4f_make(2.0f / (right - left), 0.0f, 0.0f, 0.0f);
     result.r1 = v4f_make(0.0f, 2.0f / (top - bottom), 0.0f, 0.0f);
-    result.r2 = v4f_make(0.0f, 0.0f, 1.0f / (far - near), 0.0f);
-    result.r3 = v4f_make(-(right + left) / (right - left), -(top + bottom) / (top - bottom), -near / (far - near), 1.0f);
+    result.r2 = v4f_make(0.0f, 0.0f, 1.0f / (far_plane - near_plane), 0.0f);
+    result.r3 = v4f_make(-(right + left) / (right - left), -(top + bottom) / (top - bottom), -near_plane / (far_plane - near_plane), 1.0f);
     
     return(result);
 }
