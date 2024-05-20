@@ -106,7 +106,7 @@ inl b32 os_semaphore_release(OS_Handle handle, u32 release_count, u32 *previous_
 inl void os_exit_process(s32 code);
 inl s32 os_get_pid(void);
 
-inl s32 os_interlocked_compare_exchange_s32(s32 volatile *dest, s32 new, s32 comparand);
+inl s32 os_interlocked_compare_exchange_s32(s32 volatile *dest, s32 new_value, s32 comparand);
 inl s32 os_interlocked_increment_s32(s32 volatile *addend);
 inl s32 os_interlocked_exchange_s32(s32 volatile *dest, s32 source);
 

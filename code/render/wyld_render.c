@@ -125,7 +125,7 @@ r2d_text(R2D_QuadArray *quad_array, R2D_FontParsed *font, v2f p, v4f colour, Str
             v2f final_p = p;
             // am I doing this right???????
             final_p.x += info->bearing_x;
-            final_p.y -= info->bearing_y - ascent_plus_descent;
+            final_p.y = final_p.y - (info->bearing_y - ascent_plus_descent);
             final_p.y -= 4.0f;
             
             r2d_texture_clipped(quad_array, font->atlas, final_p, v2f_make(info->width, info->height),

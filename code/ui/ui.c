@@ -50,8 +50,8 @@ ui_rect(UI_State *state, v2f p, v2f dims, UI_RectColours colours,
 }
 
 inl void
-ui_text(UI_State *state, v2f p, v4f colour, String_U8_Const string) {
-    r2d_text(&state->buffer->ui_quads, &state->buffer->font, p, colour, string);
+ui_text(UI_State *state, Font_Size font_size, v2f p, v4f colour, String_U8_Const string) {
+    r2d_text(&state->buffer->ui_quads, state->buffer->font + font_size, p, colour, string);
 }
 
 inl R2D_Quad *
@@ -60,7 +60,7 @@ ui_texture(UI_State *state, UI_ClippedTexture texture, v2f p, v2f dims, f32 corn
     
 	R2D_Quad *quad = r2d_texture_clipped(&state->buffer->ui_quads, texture.handle, p,
 										 dims, texture.clip_p, texture.clip_dims, v4f_make(1.0f, 1.0f, 1.0f, 1.0f));
-  quad->corner_roundness = corner_roundness;
+    quad->corner_roundness = corner_roundness;
 	return(quad);
 }
 
@@ -204,9 +204,10 @@ ui_create_widget(UI_State *state, UI_WidgetFlag widget_flags, String_U8_Const id
             result->semantic_size[UIAxis_Y].type = UISizeType_TextContent;
             result->semantic_size[UIAxis_Y].value = ui_peek_text_padding_y_top(state); // 0 pixels padding on y
             
-            result->text_dims = r2d_get_text_dims(&state->buffer->font, result->content_string);
+            R2D_FontParsed *parsed_font = state->buffer->font + ui_peek_font_size_top(state);
+            result->text_dims = r2d_get_text_dims(parsed_font, result->content_string);
             //result->text_dims.y = state->buffer->font.max_glyph_height;
-            result->text_dims.y = (f32)(state->buffer->font.ascent + state->buffer->font.descent);
+            result->text_dims.y = (f32)(parsed_font->ascent + parsed_font->descent);
         }
     }
     
@@ -225,6 +226,7 @@ ui_create_widget(UI_State *state, UI_WidgetFlag widget_flags, String_U8_Const id
     result->anchor[UIAxis_Y] = ui_peek_anchor_y_top(state);
     result->offset[UIAxis_X] = ui_peek_offset_x_top(state);
     result->offset[UIAxis_Y] = ui_peek_offset_y_top(state);
+    result->font_size = ui_peek_font_size_top(state);
     //result->semantic_size[UIAxis_X] = ui_peek_size_x_top(state);
     //result->semantic_size[UIAxis_Y] = ui_peek_size_y_top(state);
     
@@ -246,9 +248,9 @@ ui_create_widget(UI_State *state, UI_WidgetFlag widget_flags, String_U8_Const id
             } break;
         }
     }
-
+    
     if (result->edge_thickness < 1.0f) {
-      result->edge_thickness = 0.0f;
+        result->edge_thickness = 0.0f;
     }
     return(result);
 }
@@ -436,7 +438,7 @@ fun UI_Interact
 ui_do_button_tex(UI_State *state, String_U8_Const identifier,
 				 R2D_Handle texture, v2f clip_p, v2f clip_dims,
 				 v2f dims) {
-  UI_Widget *button = ui_create_widget(state,
+    UI_Widget *button = ui_create_widget(state,
                                          UIWidget_TextContent |
                                          UIWidget_Clickable |
                                          UIWidget_HotAnimation |
@@ -480,17 +482,17 @@ ui_do_label_tex(UI_State *state, String_U8_Const identifier, R2D_Handle texture,
                                         UIWidget_BackgroundColour,
                                         identifier);
     
-	  label->semantic_size[UIAxis_X].type = UISizeType_Pixels;
-	  label->semantic_size[UIAxis_X].value = dims.x;
+    label->semantic_size[UIAxis_X].type = UISizeType_Pixels;
+    label->semantic_size[UIAxis_X].value = dims.x;
     label->semantic_size[UIAxis_Y].type = UISizeType_Pixels;
-	  label->semantic_size[UIAxis_Y].value = dims.y;
+    label->semantic_size[UIAxis_Y].value = dims.y;
     
-  	UI_ClippedTexture *clipped_tex = &(label->bound_texture);
-	  clipped_tex->handle = texture;
-  	clipped_tex->clip_p = clip_p;
-	  clipped_tex->clip_dims = clip_dims;
+    UI_ClippedTexture *clipped_tex = &(label->bound_texture);
+    clipped_tex->handle = texture;
+    clipped_tex->clip_p = clip_p;
+    clipped_tex->clip_dims = clip_dims;
     
-	  return ui_interact_from_widget(state, label);
+    return ui_interact_from_widget(state, label);
 }
 
 fun UI_Interact
@@ -684,6 +686,7 @@ ui_begin(UI_State *state, f32 elapsed_time_secs) {
     state->offset_y_count = 0;
     state->text_padding_x_count = 0;
     state->text_padding_y_count = 0;
+    state->font_size_count = 0;
     
     ui_push_corner_roundness(state, 6.0f);
     ui_push_edge_thickness(state, 1.0f);
@@ -696,6 +699,7 @@ ui_begin(UI_State *state, f32 elapsed_time_secs) {
     ui_push_offset_y(state, ui_make_offset(UIOffsetType_Relative, UIMetricType_Pixels, 0.0f));
     ui_push_text_padding_x(state, 16.0f);
     ui_push_text_padding_y(state, 8.0f);
+    ui_push_font_size(state, FontSize_Small);
     
     //if (!(state->misc_flags & UIMiscFlag_HotThisPass)) {}
     ui_set_hot(state, ui_zero_key());
@@ -1020,7 +1024,7 @@ ui_draw_widgets(UI_State *state, UI_Widget *root) {
 		
 		if (root->flags & UIWidget_TextContent) {
 			v2f final_p = v2f_add(root->rect.p, v2f_scale(v2f_sub(root->rect.dims, root->text_dims), 0.5f));
-			ui_text(state, final_p, root->text_colour, root->content_string);
+			ui_text(state, root->font_size, final_p, root->text_colour, root->content_string);
 		}
 	}
     

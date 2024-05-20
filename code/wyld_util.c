@@ -33,7 +33,7 @@ wq_add_entry(Work_Queue *queue, void *data, Work_Queue_Callback *callback) {
     
     os_interlocked_increment_s32(&queue->completion_goal);
     
-    _WriteBarrier();
+    //_WriteBarrier();
     
     os_interlocked_exchange_s32(&queue->next_entry_to_write, new_next_entry_to_write);
     

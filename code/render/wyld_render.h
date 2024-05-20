@@ -76,10 +76,18 @@ typedef struct {
     R2D_Quad *quads;
 } R2D_QuadArray;
 
+typedef u8 Font_Size;
+enum {
+    FontSize_Small,
+    FontSize_Medium,
+    FontSize_Large,
+    FontSize_Count,
+};
+
 typedef struct {
     void *textures[4]; // allow only four textures
     u8 free_texture_flag;
-    R2D_FontParsed font;
+    R2D_FontParsed font[FontSize_Count];
     R2D_QuadArray game_quads;
     R2D_QuadArray ui_quads;
     R2D_LightConstants light_constants;
@@ -103,6 +111,9 @@ inl v2f r2d_get_texture_dims_v(R2D_Handle tex);
 inl R2D_Handle r2d_texture_from_file(R2D_Buffer *buffer, String_U8_Const filename);
 
 //~ NOTE(christian): draw
+inl void r2d_begin_render(R2D_Buffer *buffer);
+inl void r2d_end_render(R2D_Buffer *buffer);
+
 inl R2D_Quad *r2d_acquire_quad(R2D_QuadArray *quad_array);
 inl R2D_Quad *r2d_rect_filled(R2D_QuadArray *quad_array, v2f p, v2f dims, v4f colour, f32 corner_roundness);
 inl R2D_Quad *r2d_rect_outline(R2D_QuadArray *quad_array, v2f p, v2f dims, v4f colour, f32 corner_roundness, f32 side_thickness);

@@ -157,6 +157,7 @@ struct UI_Widget {
     // NOTE(christian): output of the autolayout algorithm.
     // NOTE(christian): used for input consumption. i.e. check if mouse in box / cache
     RectF32 rect;
+    Font_Size font_size;
     
     f32 corner_roundness;
     f32 edge_thickness;
@@ -246,6 +247,7 @@ typedef struct {
     ui_define_property_stack(UI_Offset, offset_y);
     ui_define_property_stack(f32, text_padding_x);
     ui_define_property_stack(f32, text_padding_y);
+    ui_define_property_stack(Font_Size, font_size);
 } UI_State;
 
 inl UI_Key ui_zero_key(void);
@@ -324,6 +326,7 @@ ui_define_property_stack_function(UI_Offset, offset_x);
 ui_define_property_stack_function(UI_Offset, offset_y);
 ui_define_property_stack_function(f32, text_padding_x);
 ui_define_property_stack_function(f32, text_padding_y);
+ui_define_property_stack_function(Font_Size, font_size);
 
 inl void
 ui_push_border_colour(UI_State *state, v4f colour) {

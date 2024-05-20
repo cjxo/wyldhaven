@@ -4,6 +4,7 @@
 #include "render/wyld_render.h"
 #include "ui/ui.h"
 #include "wyld_util.h"
+#include "audio/wyld_audio.h"
 
 #include "wyld_base.c"
 #include "wyld_math.c"
@@ -11,6 +12,7 @@
 #include "render/wyld_render.c"
 #include "ui/ui.c"
 #include "wyld_util.c"
+#include "audio/wyld_audio.c"
 
 #include <stdio.h>
 #include <time.h>
@@ -712,7 +714,9 @@ game_ui_player_info(Game_State *game_state) {
             ui_push_transparent_border(state);
             ui_push_offset_x(state, ui_make_offset(UIOffsetType_Relative, UIMetricType_Percentage, 0.5f));
             ui_push_anchor_x(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
-            ui_do_label(state, str8("<Player Class> Player Name"));
+            ui_push_font_size(state, FontSize_Medium);
+            ui_do_label(state, str8("(Player Class) Player Name"));
+            ui_pop_font_size(state);
             ui_pop_offset_x(state);
             ui_pop_anchor_x(state);
             ui_pop_transparent_border(state);
@@ -1200,205 +1204,24 @@ game_init_player(Game_State *game_state) {
     player->health = player->attributes[AttributeType_MaxHP].value_f32 * 0.5f;
 }
 
-#if 0
-//https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-properties
-// https://learn.microsoft.com/en-us/windows/win32/coreaudio/device-state-xxx-constants
-// https://stackoverflow.com/questions/31666420/undefined-reference-to-clsid-mmdeviceenumerator-and-iid-immdeviceenumerator
-// https://learn.microsoft.com/en-us/windows/win32/coreaudio/rendering-a-stream
-#include <initguid.h>
-#include <mmdeviceapi.h>
-#include <mmdeviceapi.h>
-#include <audioclient.h>
-#include <Functiondiscoverykeys_devpkey.h>
-DEFINE_GUID(IID__IMMDeviceEnumerator, 0xA95664D2, 0x9614, 0x4F35, 0xA7, 0x46, 0xDE, 0x8D, 0xB6, 0x36, 0x17, 0xE6);
-DEFINE_GUID(CLSID__MMDeviceEnumerator, 0xBCDE0395, 0xE52F, 0x467C, 0x8E, 0x3D, 0xC4, 0x57, 0x92, 0x91, 0x69, 0x2E);
-DEFINE_GUID(IID__IAudioClient, 0x1CB9AD4C, 0xDBFA, 0x4c32, 0xB1, 0x78, 0xC2, 0xF5, 0x68, 0xA7, 0x03, 0xB2);
-DEFINE_GUID(IID__IAudioRenderClient, 0xF294ACFC, 0x3146, 0x4483, 0xA7, 0xBF, 0xAD, 0xDC, 0xA7, 0xC2, 0x60, 0xE2);
-#endif
-
-#include <mmeapi.h>
-
-typedef struct {
-    s16 *data;
-    u64 size_in_bytes;
-    
-    u64 sound_index_in_bytes;
-} Sound;
-
-typedef struct {
-    u64 samples_per_second_hz;
-    u8 channels;
-    u32 bytes_per_channel; //sizeof(s16)
-    
-    Sound bound_sound; // temporary for testing
-    
-    OS_Handle fill_thread;
-    OS_Handle semaphore_swap_buffer;
-    
-    // NOTE(christian): platform specific stuff
-    u32 buffer_index;
-    HWAVEOUT output_device_handle;
-    u64 size_in_bytes_per_buffer;
-    WAVEHDR wave_hdrs[2];
-    u8 *wave_hdr_buffer;
-} Audio_Device;
-
 fun void
-snd_generate_square_wave(Memory_Arena *arena, Audio_Device *audio_device, Sound *sound, u64 duration_secs, s16 frequency_hz, s16 amplitude) {
-    sound->size_in_bytes = duration_secs * audio_device->samples_per_second_hz * audio_device->bytes_per_channel * audio_device->channels;
-    sound->data = (s16 *)arena_push_array(arena, u8, sound->size_in_bytes);
-    u64 sample_count = duration_secs * audio_device->samples_per_second_hz;
+test_audio_callback(u32 buffer_sz_bytes, u8 *buffer_ptr, void *user_data) {
+    Sound *sound = (Sound *)user_data;
     
-    u32 square_wave_period = (u32)audio_device->samples_per_second_hz / frequency_hz;
-    
-    s16 *sample_out = (s16 *)sound->data;
-    for (u32 sample_index = 0; sample_index < sample_count; ++sample_index) {
-        s16 sample_to_write = ((sample_index / (square_wave_period / 2)) % 2) ? -amplitude : amplitude;
-        *sample_out++ = sample_to_write;
-        *sample_out++ = sample_to_write;
-    }
-}
-
-fun void
-snd_generate_sine_wave(Memory_Arena *arena, Audio_Device *audio_device, Sound *sound, u64 duration_secs, f32 frequency_hz, s16 amplitude) {
-    sound->size_in_bytes = duration_secs * audio_device->samples_per_second_hz * audio_device->bytes_per_channel * audio_device->channels;
-    sound->data = (s16 *)arena_push_array(arena, u8, sound->size_in_bytes);
-    u64 sample_count = duration_secs * audio_device->samples_per_second_hz;
-    
-    f64 t_increments = two_pi_f32 / (((f64)audio_device->samples_per_second_hz / frequency_hz));
-    f64 t_sine = 0.0;
-    
-    s16 *sample_out = (s16 *)sound->data;
-    for (u64 sample_index = 0; sample_index < sample_count; ++sample_index) {
-        s16 sample = (s16)(sin(t_sine) * (u64)amplitude);
-        *sample_out++ = sample;
-        *sample_out++ = sample;
-        t_sine += t_increments;
-    }
-    
-    assert_true(sample_out == (s16 *)((u8 *)sound->data + sound->size_in_bytes));
-}
-
-fun void __stdcall
-winmm_wave_out_proc(HWAVEOUT device_handle, UINT message, DWORD_PTR instance,
-                    DWORD_PTR param_0, DWORD_PTR param_1) {
-    unused(device_handle);
-    unused(param_0);
-    unused(param_1);
-    Audio_Device *device = (Audio_Device *)instance;
-    switch (message) {
-        case WOM_CLOSE: {
-        } break;
-        
-        case WOM_DONE: {
-            OutputDebugStringA("Please give me more audio\n");
-            
-            // the device is done with block. Now, Request for new block
-            os_semaphore_release(device->semaphore_swap_buffer, 1, null);
-        } break;
-        
-        case WOM_OPEN: {
-            OutputDebugString("Successfully created audio device.\n");
-        } break;
-    }
-}
-
-fun void
-audio_swap_buffers(Audio_Device *device) {
-    u32 current_index = device->buffer_index;
-    WAVEHDR *hdr = device->wave_hdrs + current_index;
-    
-    u8 *buffer_ptr = device->wave_hdr_buffer + device->size_in_bytes_per_buffer * current_index;
-    waveOutUnprepareHeader(device->output_device_handle, hdr, sizeof(WAVEHDR));
-    hdr->lpData = (void *)buffer_ptr;
-    hdr->dwBufferLength = (u32)device->size_in_bytes_per_buffer;
-    
-    Sound *sound = &(device->bound_sound);
-    // TODO(christian): in here, we might need to invoke the callback the user
-    // provided, to provide their sound.
-    
-    s16 *out_chunk = (s16 *)hdr->lpData;
-    u32 sample_count_for_buffer = hdr->dwBufferLength / device->bytes_per_channel;
-    for (u32 sample_idx = 0; sample_idx < sample_count_for_buffer; ++sample_idx) {
-        u64 current_sample = sample_idx + sound->sound_index_in_bytes / device->bytes_per_channel;
-        if (current_sample < sound->size_in_bytes) {
+    if ((sound->sound_index_in_bytes + buffer_sz_bytes) < sound->size_in_bytes) {
+        s16 *out_chunk = (s16 *)buffer_ptr;
+        u32 sample_count_for_buffer = buffer_sz_bytes / audio_bytes_per_channel();
+        for (u32 sample_idx = 0; sample_idx < sample_count_for_buffer; ++sample_idx) {
+            u64 current_sample = sample_idx + sound->sound_index_in_bytes / audio_bytes_per_channel();
             u8 *sample_out = (u8 *)(sound->data + current_sample);
             out_chunk[sample_idx] = sample_out[0] | (sample_out[1] << 8);
         }
-    }
-    
-    hdr->dwFlags = 0;
-    waveOutPrepareHeader(device->output_device_handle, hdr, sizeof(WAVEHDR));
-    waveOutWrite(device->output_device_handle, hdr, sizeof(WAVEHDR));
-    sound->sound_index_in_bytes += hdr->dwBufferLength;
-    
-    device->buffer_index = (device->buffer_index + 1) % array_count(device->wave_hdrs);
-}
-
-fun s32
-audio_play(void *param) {
-    Audio_Device *device = (Audio_Device *)param;
-    while (true) {
-        audio_swap_buffers(device);
-        os_wait_for_object(device->semaphore_swap_buffer, OSWait_Infinite);
-    }
-    
-    return 0;
-}
-
-// TODO(christian): get rid of specifying Audio_Device. This should be internal.
-fun void
-audio_init(Memory_Arena *arena, Audio_Device *device, u64 samples_per_sec) {
-    WAVEFORMATEX wave_format = {
-        .wFormatTag = WAVE_FORMAT_PCM,
-        .nChannels = 2,
-        .nSamplesPerSec = (u32)samples_per_sec,
-    };
-    
-    wave_format.wBitsPerSample = sizeof(s16) * 8;
-    wave_format.nBlockAlign = (wave_format.wBitsPerSample / 8) * wave_format.nChannels;
-    wave_format.nAvgBytesPerSec = wave_format.nBlockAlign * wave_format.nSamplesPerSec;
-    wave_format.cbSize = 0;
-    
-    MMRESULT wave_return_result = waveOutOpen(&(device->output_device_handle), WAVE_MAPPER, &wave_format,
-                                              (DWORD_PTR)&winmm_wave_out_proc, (DWORD_PTR)device,
-                                              CALLBACK_FUNCTION);
-    
-    switch (wave_return_result) {
-        case MMSYSERR_NOERROR: {
-        } break;
-    }
-    
-    device->samples_per_second_hz = samples_per_sec;
-    device->channels = 2;
-    device->bytes_per_channel = sizeof(s16);
-    
-    device->size_in_bytes_per_buffer = 4096 * wave_format.nBlockAlign;
-    u64 hdr_buffer_size = 0;
-    for (u32 hdr_index = 0; hdr_index < array_count(device->wave_hdrs); ++hdr_index) {
-        WAVEHDR *hdr = device->wave_hdrs + hdr_index;
-        hdr->lpData = null;
-        hdr->dwBufferLength = (u32)device->size_in_bytes_per_buffer;
-        hdr->dwBytesRecorded = 0;
-        hdr->dwUser = null;
-        hdr->dwFlags = 0;
-        hdr->dwLoops = 0;
-        hdr->lpNext = null;
-        hdr->reserved = null;
         
-        hdr_buffer_size += device->size_in_bytes_per_buffer;
+        sound->sound_index_in_bytes += buffer_sz_bytes;
+    } else {
+        clear_memory(buffer_ptr, buffer_sz_bytes);
     }
     
-    snd_generate_sine_wave(arena, device, &device->bound_sound, 10, 100, 5000);
-    
-    assert_true(hdr_buffer_size > 0);
-    device->wave_hdr_buffer = arena_push_array(arena, u8, hdr_buffer_size);
-    
-    device->fill_thread = os_thread_create(&audio_play, true, device);
-    assert_false(os_match_handle(device->fill_thread, os_bad_handle()));
-    
-    device->semaphore_swap_buffer = os_semaphore_create(1, array_count(device->wave_hdrs), null);
-    assert_false(os_match_handle(device->semaphore_swap_buffer, os_bad_handle()));
 }
 
 int __stdcall
@@ -1410,66 +1233,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
     
     if (os_init()) {
         rnd_seed((u64)time(null));
-#if 0
-        IMMDeviceEnumerator *imm_enumerator = null;
-        //IMMDeviceCollection *imm_collection = null;
-        IMMDevice *imm_device = null;
-        IAudioClient *audio_client = null;
-        IAudioRenderClient *audio_render_client = null;
         
-        CoInitialize(null);
-        HRESULT result = CoCreateInstance(&CLSID__MMDeviceEnumerator, null,
-                                          CLSCTX_ALL, &IID__IMMDeviceEnumerator,
-                                          &imm_enumerator);
-        
-#if 0
-        result = IMMDeviceEnumerator_EnumAudioEndpoints(imm_enumerator, eRender,
-                                                        DEVICE_STATE_ACTIVE,
-                                                        &imm_collection);
-        
-        UINT device_count = 0;
-        IMMDeviceCollection_GetCount(imm_collection, &device_count);
-#endif
-        
-        IMMDeviceEnumerator_GetDefaultAudioEndpoint(imm_enumerator, eRender, eConsole,
-                                                    &imm_device);
-        
-        IPropertyStore *audio_dev_props = null;
-        IMMDevice_OpenPropertyStore(imm_device, STGM_READ, &audio_dev_props);
-        
-        PROPVARIANT audio_dev_name;
-        IPropertyStore_GetValue(audio_dev_props, &PKEY_DeviceInterface_FriendlyName, &audio_dev_name);
-        
-        IMMDevice_Activate(imm_device, &IID__IAudioClient, CLSCTX_ALL, null, &audio_client);
-        
-        REFERENCE_TIME duration = 10000000;
-#if 1
-        WAVEFORMATEX wave_format = { 0 };
-        wave_format.wFormatTag = WAVE_FORMAT_PCM;
-        wave_format.nChannels = 2;
-        wave_format.nSamplesPerSec = 48000;
-        wave_format.wBitsPerSample = 16;
-        wave_format.nBlockAlign = wave_format.nChannels * (wave_format.wBitsPerSample / 8);
-        wave_format.nAvgBytesPerSec = wave_format.nBlockAlign * wave_format.nSamplesPerSec;
-        wave_format.cbSize = 0;
-#else 
-        WAVEFORMATEX *wave_format = 0;
-        IAudioClient_GetMixFormat(audio_client, &wave_format);
-#endif
-        //https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-isformatsupported
-        result = IAudioClient_Initialize(audio_client, AUDCLNT_SHAREMODE_SHARED, 0,
-                                         duration, 0, &wave_format, null);
-        
-        u32 buffer_size = 0;
-        IAudioClient_GetBufferSize(audio_client, &buffer_size);
-        
-        IAudioClient_GetService(audio_client, &IID__IAudioRenderClient, &audio_render_client);
-        
-        u8 *buffer_ptr = 0;
-        IAudioRenderClient_GetBuffer(audio_render_client, buffer_size, &buffer_ptr);
-        
-        //result = IAudioClient_Start(audio_client);
-#endif
         OS_Window *window = os_create_window(_str8(Video Game), 1280, 720);
         
         u64 frames_per_second = os_get_window_refresh_rate(window);
@@ -1495,8 +1259,12 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
         
         game_state.stat_pts_t_dir = 1.0f;
         
-        Audio_Device audio_device;
-        audio_init(game_state.main_arena, &audio_device, 48000);
+        audio_init(44100);
+        
+        Sound sine_wave = { 0 };
+        snd_generate_sine_wave(game_state.main_arena, &sine_wave, 30, 100, 5000);
+        
+        audio_attatch_audio_provide_callback(&test_audio_callback, (void *)(&sine_wave));
         
         for (u32 level_index = 0;
              level_index < max_level_depth;
@@ -1601,6 +1369,8 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
 			}
             
             game_update_and_render(&game_state, &window->input, &r2d_buffer, game_update_seconds);
+            //r2d_texture(&r2d_buffer.ui_quads, r2d_buffer.font[2].atlas, v2f_make(0.0f, 0.0f), v2f_make(512.0f, 512.0f), v4f_make(1.0f, 1.0f, 1.0f, 1.0f));
+            //r2d_text(&r2d_buffer.ui_quads, r2d_buffer.font, v2f_make(0.0f, 0.0f), v4f_make(1.0f, 1.0f, 1.0f, 1.0f), str8("TestIng"));
             r2d_upload_to_gpu(&r2d_buffer, true, 0.0f, 0.0f, 0.0f, 1.0f);
             
             u64 ticks_end_for_work = os_get_ticks();

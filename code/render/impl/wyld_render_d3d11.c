@@ -1,3 +1,4 @@
+#include "wyld_dwrite.h"
 #include "ext/freetype/ft2build.h"
 #include FT_FREETYPE_H
 
@@ -5,7 +6,6 @@
 #include "ext/stb_image.h"
 
 typedef struct {
-    Memory_Arena *arena;
     OS_Window *associated_window;
     
     // NOTE(christian): d3d11
@@ -20,12 +20,12 @@ typedef struct {
     
 	// NOTE(christian): Shared buffers for game and UI
     ID3D11Buffer *main_constant_buffer;
-
+    
 	// NOTE(christian): UI renderer
-//    ID3D11VertexShader *ui_vertex_shader;
-  //  ID3D11PixelShader *ui_pixel_shader;
-  //  ID3D11Buffer *ui_quad_buffer;
-
+    //    ID3D11VertexShader *ui_vertex_shader;
+    //  ID3D11PixelShader *ui_pixel_shader;
+    //  ID3D11Buffer *ui_quad_buffer;
+    
     //~ NOTE(christian): game renderer
     ID3D11BlendState1 *quad_blend_state;
     ID3D11SamplerState *quad_texture_sampler_state;
@@ -34,7 +34,17 @@ typedef struct {
     ID3D11Buffer *game_quad_buffer;
     ID3D11ShaderResourceView *game_quad_srv;
     ID3D11Buffer *game_light_constant_buffer;
+    
+    ID3D11Texture2D *font_atlas;
+    ID3D11ShaderResourceView *font_srv;
+    IDXGISurface *font_surface;
 } D3D11_State;
+
+typedef struct {
+    Memory_Arena *arena;
+    D3D11_State d3d11;
+    //DWrite_State dwrite;
+} DirectX_Stuff;
 
 typedef struct {
     u32 width;
@@ -42,6 +52,22 @@ typedef struct {
     ID3D11Texture2D *texture;
     ID3D11ShaderResourceView *srv;
 } D3D11_Texture;
+
+fun D3D11_State *
+d3d11_state_from_r2d(R2D_Buffer *buffer) {
+    DirectX_Stuff *result = (DirectX_Stuff *)buffer->reserved;
+    assert_true(result != null);
+    return &result->d3d11;
+}
+
+#if 0
+fun DWrite_State *
+dwrite_state_from_r2d(R2D_Buffer *buffer) {
+    DirectX_Stuff *result = (DirectX_Stuff *)buffer->reserved;
+    assert_true(result != null);
+    return &result->dwrite;
+}
+#endif
 
 fun b32
 d3d11_create_devices(D3D11_State *state) {
@@ -91,7 +117,7 @@ d3d11_enable_debug(D3D11_State *state) {
 fun b32
 d3d11_initialize_swapchain(D3D11_State *state, OS_Window *window) {
     b32 result = false;
-
+    
 	W32_Window *w32_window = (W32_Window *)window;
     
     IDXGIDevice *dxgi_device = null;
@@ -155,7 +181,7 @@ d3d11_create_quad_shaders(D3D11_State *state) {
 #else
     flags |= D3DCOMPILE_OPTIMIZATION_LEVEL3;
 #endif
-
+    
     const char hlsl[] =
         "#line " stringify(__LINE__) " \n"
         "#define max_lights 8\n"
@@ -422,11 +448,10 @@ typedef struct {
 } D3D11_Constants;
 
 fun void
-d3d11_initialize_buffers(R2D_Buffer *buffer, u32 num_quads) {
+d3d11_initialize_buffers(D3D11_State *state, u32 num_quads) {
 	HRESULT hr;
     
 	// GAME BUFFERS
-    D3D11_State *state = (D3D11_State *)buffer->reserved;
     D3D11_BUFFER_DESC quad_buffer_desc;
     quad_buffer_desc.ByteWidth = num_quads * sizeof(R2D_Quad);
     quad_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -434,28 +459,28 @@ d3d11_initialize_buffers(R2D_Buffer *buffer, u32 num_quads) {
     quad_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     quad_buffer_desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
     quad_buffer_desc.StructureByteStride = sizeof(R2D_Quad);
-
+    
 	hr = ID3D11Device1_CreateBuffer(state->main_device, &quad_buffer_desc, null, &state->game_quad_buffer);
 	if (hr != S_OK) {
 		os_message_box(str8("ID3D11Device1_CreateBuffer Error"), str8("Failed to create game quads"));
 		os_exit_process(1);
 	}
-
+    
 	D3D11_SHADER_RESOURCE_VIEW_DESC quad_srv_desc = { 0 };
 	quad_srv_desc.Format = DXGI_FORMAT_UNKNOWN;
 	quad_srv_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
 	quad_srv_desc.Buffer.NumElements = num_quads;
-
+    
 	hr = ID3D11Device1_CreateShaderResourceView(state->main_device, (ID3D11Resource *)state->game_quad_buffer,
 											    &quad_srv_desc, &state->game_quad_srv);
-
+    
 	if (hr != S_OK) {
 		os_message_box(str8("ID3D11Device1_CreateShaderResourceView Error"), str8("Failed to create game quad SRV"));
 		os_exit_process(1);
 	}
-
+    
 	// UI BUFFERS
-
+    
 	// CONSTANT BUFFERS
 	D3D11_BUFFER_DESC constant_buffer_desc;
 	constant_buffer_desc.ByteWidth = sizeof(D3D11_Constants);
@@ -470,7 +495,7 @@ d3d11_initialize_buffers(R2D_Buffer *buffer, u32 num_quads) {
 		os_message_box(str8("ID3D11Device1_CreateBuffer Error"), str8("Failed to create common constants constant buffer"));
 		os_exit_process(1);
 	}
-
+    
 	constant_buffer_desc.ByteWidth = sizeof(R2D_LightConstants);
 	hr = ID3D11Device1_CreateBuffer(state->main_device, &constant_buffer_desc, null, &state->game_light_constant_buffer);
 	if (hr != S_OK) {
@@ -480,23 +505,17 @@ d3d11_initialize_buffers(R2D_Buffer *buffer, u32 num_quads) {
 }
 
 inl void
-d3d11_initialize(R2D_Buffer *buffer, OS_Window *window, u32 quads_to_render) {
-    if (!buffer->reserved) {
-        Memory_Arena *d3d11_arena = arena_reserve(mb(16));
-        buffer->reserved = arena_push(d3d11_arena, sizeof(D3D11_State));
-        D3D11_State *d3d11_state = (D3D11_State *)buffer->reserved;
-        d3d11_state->associated_window = window;
-        d3d11_state->arena = d3d11_arena;
-        
-        d3d11_create_devices(d3d11_state);
-        
-        d3d11_enable_debug(d3d11_state);
-        
-        d3d11_initialize_swapchain(d3d11_state, window);
-        d3d11_create_quad_shaders(d3d11_state);
-        d3d11_setup_rasterizer(d3d11_state);
-        d3d11_initialize_buffers(buffer, quads_to_render);
-    }
+d3d11_initialize(D3D11_State *d3d11_state, OS_Window *window, u32 quads_to_render) {
+    d3d11_state->associated_window = window;
+    
+    d3d11_create_devices(d3d11_state);
+    
+    d3d11_enable_debug(d3d11_state);
+    
+    d3d11_initialize_swapchain(d3d11_state, window);
+    d3d11_create_quad_shaders(d3d11_state);
+    d3d11_setup_rasterizer(d3d11_state);
+    d3d11_initialize_buffers(d3d11_state, quads_to_render);
 }
 
 inl b32
@@ -504,16 +523,66 @@ r2d_initialize(R2D_Buffer *buffer, OS_Window *window) {
     clear_struct(buffer);
     u32 quads_to_render = 4096 * 2;
     if (!buffer->reserved) {
-        d3d11_initialize(buffer, window, quads_to_render);
-        D3D11_State *state = (D3D11_State *)buffer->reserved;
+        Memory_Arena *dx_arena = arena_reserve(mb(16));
+        buffer->reserved = arena_push(dx_arena, sizeof(DirectX_Stuff));
+        DirectX_Stuff *dx_state = (DirectX_Stuff *)buffer->reserved;
+        dx_state->arena = dx_arena;
+        
+        d3d11_initialize(&dx_state->d3d11, window, quads_to_render);
+        
+#if 0
+        {
+            D3D11_State *d3d11_state = d3d11_state_from_r2d(buffer);
+            D3D11_TEXTURE2D_DESC font_atlas_desc = {
+                .Width = 512,
+                .Height = 512,
+                .MipLevels = 1,
+                .ArraySize = 1,
+                .Format = DXGI_FORMAT_R8G8B8A8_UNORM,
+                .SampleDesc.Count = 1,
+                .SampleDesc.Quality = 0,
+                .Usage = D3D11_USAGE_DEFAULT,
+                .BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE,
+                .CPUAccessFlags = 0,
+                .MiscFlags = 0,
+            };
+            
+            HRESULT hresult = ID3D11Device1_CreateTexture2D(d3d11_state->main_device, &font_atlas_desc, null, 
+                                                            &(d3d11_state->font_atlas));
+            
+            if (hresult != S_OK) {
+                os_message_box(str8("ID3D11Device1_CreateTexture2D Error"), str8("Failed to create font texture"));
+                os_exit_process(0);
+            }
+            
+            hresult = ID3D11Device1_CreateShaderResourceView(d3d11_state->main_device,
+                                                             (ID3D11Resource *)d3d11_state->font_atlas, null, 
+                                                             &d3d11_state->font_srv);
+            
+            if (hresult != S_OK) {
+                os_message_box(str8("ID3D11Device1_CreateShaderResourceView Error"), str8("Failed to create font texture for shader resource"));
+                os_exit_process(0);
+            }
+            
+            hresult = ID3D11Texture2D_QueryInterface(d3d11_state->back_buffer, &IID_IDXGISurface, &(d3d11_state->font_surface));
+            
+            if (hresult != S_OK) {
+                os_message_box(str8("ID3D11Texture2D_QueryInterface Error"), str8("Failed to create texture surface for font"));
+                os_exit_process(0);
+            }
+            
+            
+            //dwrite_initialize(&dx_state->dwrite, d3d11_state->font_surface);
+        }
+#endif
         
         buffer->game_quads.quad_count = 0;
         buffer->game_quads.quad_capacity = quads_to_render;
-        buffer->game_quads.quads = arena_push_array(state->arena, R2D_Quad, quads_to_render);
+        buffer->game_quads.quads = arena_push_array(dx_state->arena, R2D_Quad, quads_to_render);
         
         buffer->ui_quads.quad_count = 0;
         buffer->ui_quads.quad_capacity = quads_to_render / 2;
-        buffer->ui_quads.quads = arena_push_array(state->arena, R2D_Quad, buffer->ui_quads.quad_capacity);
+        buffer->ui_quads.quads = arena_push_array(dx_state->arena, R2D_Quad, buffer->ui_quads.quad_capacity);
         
         for (u32 t = 0; t < array_count(buffer->textures); ++t) {
             buffer->textures[t] = null;
@@ -521,9 +590,14 @@ r2d_initialize(R2D_Buffer *buffer, OS_Window *window) {
         
         buffer->free_texture_flag = 0xFF;
         
+        // TODO(christian): get rid of FT
         FT_Library ft_library;
         FT_Face ft_face;
-        u32 face_size = 8;
+        
+        read_only u32 face_sizes[FontSize_Count] = {
+            8, 10, 12
+        };
+        
         FT_Error ft_error_code = FT_Init_FreeType(&ft_library);
         if (ft_error_code == FT_Err_Ok) {
             ft_error_code = FT_New_Face(ft_library, "..\\data\\assets\\fonts\\dos437.ttf", 0, &ft_face);
@@ -536,70 +610,84 @@ r2d_initialize(R2D_Buffer *buffer, OS_Window *window) {
                 u32 atlas_pitch = atlas_width * bytes_per_pixel;
                 
                 u32 glyph_atlas_gap = 4;
-                u32 glyph_atlas_col = glyph_atlas_gap;
-                u32 glyph_atlas_row = glyph_atlas_gap;
                 u8 *glyph_atlas = (u8 *)(arena_push(font_parse_scratch, bytes_per_pixel * atlas_width * atlas_height));
                 
-                buffer->font.ascent = ft_face->ascender >> 6;
-                buffer->font.descent = ft_face->descender >> 6;
-                s32 line_space = face_size + (buffer->font.ascent - buffer->font.descent);
-                
-                ft_error_code = FT_Set_Pixel_Sizes(ft_face, 0, face_size);
-                if (ft_error_code == FT_Err_Ok) {
-                    for (u32 codepoint = 0; codepoint < 128; codepoint += 1) {
-                        u32 glyph_index = FT_Get_Char_Index(ft_face, codepoint);
-                        
-                        ft_error_code = FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_DEFAULT);
-                        if (ft_error_code == FT_Err_Ok) {
-                            ft_error_code = FT_Render_Glyph(ft_face->glyph, FT_RENDER_MODE_NORMAL);
+                //f32 dpi = 96.0f;
+                for (u32 font_size_index = 0; font_size_index < FontSize_Count; ++font_size_index) {
+                    u32 glyph_atlas_col = glyph_atlas_gap;
+                    u32 glyph_atlas_row = glyph_atlas_gap;
+                    R2D_FontParsed *font_parsed = buffer->font + font_size_index;
+                    font_parsed->ascent = ft_face->ascender >> 6;
+                    font_parsed->descent = ft_face->descender >> 6;
+                    s32 line_space = face_sizes[font_size_index] + (font_parsed->ascent - font_parsed->descent);
+                    
+                    //f32 ppem = face_sizes[font_size_index] * (1.0f / 72.0f) * dpi;
+                    //f32 ppem_per_design_unit = (f32)face_sizes[font_size_index] / (f32)ft_face->units_per_EM;
+                    //u32 raster_target_h = (u32)(8.0f * (f32)ft_face->height * ppem_per_design_unit);
+                    //f32 raster_target_y = (f32)(raster_target_h / 2);
+                    
+                    //font_parsed->raster_target_y = raster_target_y;
+                    ft_error_code = FT_Set_Pixel_Sizes(ft_face, 0, face_sizes[font_size_index]);
+                    if (ft_error_code == FT_Err_Ok) {
+                        for (u32 codepoint = 0; codepoint < 128; codepoint += 1) {
+                            u32 glyph_index = FT_Get_Char_Index(ft_face, codepoint);
+                            
+                            ft_error_code = FT_Load_Glyph(ft_face, glyph_index, FT_LOAD_DEFAULT);
                             if (ft_error_code == FT_Err_Ok) {
-                                FT_Bitmap *bitmap = &(ft_face->glyph->bitmap);
-                                FT_Glyph_Metrics *metrics = &(ft_face->glyph->metrics);
-                                
-                                if ((glyph_atlas_col + bitmap->width + glyph_atlas_gap) >= atlas_width) {
-                                    glyph_atlas_col = glyph_atlas_gap;
-                                    glyph_atlas_row += line_space + glyph_atlas_gap;
-                                    assert_true(glyph_atlas_row < atlas_height);
-                                }
-                                
-                                u8 *source_pixels = bitmap->buffer;
-                                u8 *dest_pixels = glyph_atlas + bytes_per_pixel * (glyph_atlas_row * atlas_width + glyph_atlas_col);
-                                
-                                for (u32 row = 0; row < bitmap->rows; row += 1) {
-                                    u8 *source_row = source_pixels;
-                                    u8 *dest_row = dest_pixels;
-                                    for (u32 col = 0; col < bitmap->width; col += 1) {
-                                        u8 color = *source_row++;
-                                        *dest_row++ = color;
-                                        *dest_row++ = color;
-                                        *dest_row++ = color;
-                                        *dest_row++ = color;
+                                ft_error_code = FT_Render_Glyph(ft_face->glyph, FT_RENDER_MODE_MONO);
+                                if (ft_error_code == FT_Err_Ok) {
+                                    FT_Bitmap *bitmap = &(ft_face->glyph->bitmap);
+                                    FT_Glyph_Metrics *metrics = &(ft_face->glyph->metrics);
+                                    
+                                    if ((glyph_atlas_col + bitmap->width + glyph_atlas_gap) >= atlas_width) {
+                                        glyph_atlas_col = glyph_atlas_gap;
+                                        glyph_atlas_row += line_space + glyph_atlas_gap;
+                                        assert_true(glyph_atlas_row < atlas_height);
                                     }
                                     
-                                    source_pixels += bitmap->pitch;
-                                    dest_pixels += atlas_pitch;
+                                    u8 *source_pixels = bitmap->buffer;
+                                    u8 *dest_pixels = glyph_atlas + bytes_per_pixel * (glyph_atlas_row * atlas_width + glyph_atlas_col);
+                                    
+                                    for (u32 row = 0; row < bitmap->rows; row += 1) {
+                                        u8 *source_row = source_pixels;
+                                        u8 *dest_row = dest_pixels;
+                                        for (u32 col = 0; col < bitmap->width; col += 1) {
+                                            u8 color = (source_row[col / 8] & (1 << (7 - (col % 8)))) ? 255 : 0;
+                                            //u8 color = *source_row++;
+                                            *dest_row++ = color;
+                                            *dest_row++ = color;
+                                            *dest_row++ = color;
+                                            *dest_row++ = color;
+                                        }
+                                        
+                                        source_pixels += bitmap->pitch;
+                                        dest_pixels += atlas_pitch;
+                                    }
+                                    
+                                    R2D_GlyphInfo *glyph = font_parsed->glyphs + codepoint;
+                                    glyph->x_p_in_atlas = glyph_atlas_col;
+                                    glyph->y_p_in_atlas = glyph_atlas_row;
+                                    glyph->advance = (f32)(metrics->horiAdvance >> 6);
+                                    glyph->bearing_x = (f32)(metrics->horiBearingX >> 6);
+                                    glyph->bearing_y = (f32)(metrics->horiBearingY >> 6);
+                                    //glyph->bearing_y = (f32)ft_face->glyph->bitmap_top;
+                                    glyph->width = (f32)(metrics->width >> 6);
+                                    glyph->height = (f32)(metrics->height >> 6);
+                                    
+                                    if (glyph->height > font_parsed->max_glyph_height) {
+                                        font_parsed->max_glyph_height = glyph->height;
+                                    }
+                                    
+                                    glyph_atlas_col += bitmap->width + glyph_atlas_gap;
                                 }
-                                
-                                R2D_GlyphInfo *glyph = buffer->font.glyphs + codepoint;
-                                glyph->x_p_in_atlas = glyph_atlas_col;
-                                glyph->y_p_in_atlas = glyph_atlas_row;
-                                glyph->advance = (f32)(metrics->horiAdvance >> 6);
-                                glyph->bearing_x = (f32)(metrics->horiBearingX >> 6);
-                                glyph->bearing_y = (f32)(metrics->horiBearingY >> 6);
-                                glyph->width = (f32)(metrics->width >> 6);
-                                glyph->height = (f32)(metrics->height >> 6);
-                                
-                                if (glyph->height > buffer->font.max_glyph_height) {
-                                    buffer->font.max_glyph_height = glyph->height;
-                                }
-                                
-                                glyph_atlas_col += bitmap->width + glyph_atlas_gap;
                             }
                         }
                     }
+                    
+                    font_parsed->atlas = r2d_alloc_texture(buffer, atlas_width, atlas_height, glyph_atlas);
+                    clear_memory(glyph_atlas, bytes_per_pixel * atlas_width * atlas_height);
                 }
                 
-                buffer->font.atlas = r2d_alloc_texture(buffer, atlas_width, atlas_height, glyph_atlas);
                 FT_Done_Face(ft_face);
                 temp_mem_end(font_parse_mem);
             } else if (ft_error_code == FT_Err_Unknown_File_Format) {
@@ -619,13 +707,14 @@ inl R2D_Handle
 r2d_alloc_texture(R2D_Buffer *buffer, s32 width, s32 height, void *data) {
     R2D_Handle result = r2d_bad_handle();
     
-    D3D11_State *d3d11_state = (D3D11_State *)buffer->reserved;
     unsigned long enabled_p = 0;
     if (_BitScanForward(&enabled_p, (unsigned long)buffer->free_texture_flag) == 1) {
         if (enabled_p < array_count(buffer->textures)) {
             buffer->free_texture_flag &= ~(1 << enabled_p);
             
-            D3D11_Texture *texture = arena_push_struct(d3d11_state->arena, D3D11_Texture);
+            DirectX_Stuff *dx_state = (DirectX_Stuff *)buffer->reserved;
+            D3D11_State *d3d11_state = &(dx_state->d3d11);
+            D3D11_Texture *texture = arena_push_struct(dx_state->arena, D3D11_Texture);
             D3D11_TEXTURE2D_DESC texture_desc = {
                 .Width = (u32)(width),
                 .Height = (u32)(height),
@@ -663,7 +752,6 @@ r2d_alloc_texture(R2D_Buffer *buffer, s32 width, s32 height, void *data) {
     return(result);
 }
 
-// TODO(christian): nasty nasty! getting texture dims shouldnt depend on R2D_Buffer! Find a better way!
 inl b32
 r2d_get_texture_dims(R2D_Handle tex, s32 *width, s32 *height) {
     if ((tex.h64[0] >= 1) && (tex.h64[0] <= 4)) {
@@ -700,7 +788,7 @@ r2d_texture_from_file(R2D_Buffer *buffer, String_U8_Const filename) {
 
 inl void
 r2d_set_viewport_dims(R2D_Buffer *buffer, u32 width, u32 height) {
-    D3D11_State *d3d11_state = (D3D11_State *)buffer->reserved;
+    D3D11_State *d3d11_state = d3d11_state_from_r2d(buffer);
     
     D3D11_VIEWPORT viewport;
     viewport.TopLeftX = 0;
@@ -715,7 +803,7 @@ r2d_set_viewport_dims(R2D_Buffer *buffer, u32 width, u32 height) {
 
 inl void
 r2d_get_viewport_dims(R2D_Buffer *buffer, u32 *width, u32 *height) {
-    D3D11_State *d3d11_state = (D3D11_State *)buffer->reserved;
+    D3D11_State *d3d11_state = d3d11_state_from_r2d(buffer);
     if (width) {
         *width = (u32)d3d11_state->viewport.Width;
     }
@@ -728,7 +816,7 @@ r2d_get_viewport_dims(R2D_Buffer *buffer, u32 *width, u32 *height) {
 // TODO(christian): should I use different shaders for UI and game?
 inl b32
 r2d_upload_to_gpu(R2D_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f32 clear_b, f32 clear_a) {
-    D3D11_State *state = (D3D11_State *)buffer->reserved;
+    D3D11_State *state = d3d11_state_from_r2d(buffer);
     
     OS_Window *window = state->associated_window;
     assert_true(window != null);
@@ -740,27 +828,27 @@ r2d_upload_to_gpu(R2D_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f32 c
 		ID3D11RenderTargetView_Release(state->render_target_view);
 		
 		HRESULT result = IDXGISwapChain1_ResizeBuffers(state->dxgi_swap_chain,
-			 										   0,
-			 										   window->client_width,
+                                                       0,
+                                                       window->client_width,
 													   window->client_height,
 													   DXGI_FORMAT_UNKNOWN,
 													   DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH);
-
+        
 		assert_true(result == S_OK);
 		
 		result = IDXGISwapChain1_GetBuffer(state->dxgi_swap_chain, 0, &IID_ID3D11Texture2D, &state->back_buffer);
 		assert_true(result == S_OK);
-
+        
 		D3D11_RENDER_TARGET_VIEW_DESC rtv_desc = {0};
 		rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
 		rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 		result = ID3D11Device_CreateRenderTargetView(state->base_device, (ID3D11Resource *)state->back_buffer,
 													 &rtv_desc, &state->render_target_view);
 		assert_true(result == S_OK);
-
+        
 		r2d_set_viewport_dims(buffer, window->client_width, window->client_height);
 	}
-
+    
     D3D11_VIEWPORT viewport = state->viewport;
     
     D3D11_MAPPED_SUBRESOURCE mapped_subresource;
@@ -829,6 +917,9 @@ r2d_upload_to_gpu(R2D_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f32 c
     }
     
     ID3D11DeviceContext_DrawInstanced(state->base_device_context, 4, (UINT)buffer->ui_quads.quad_count, 0, 0);
+    
+    // NOTE(christian): TEST
+    //dwrite_draw(dwrite_state_from_r2d(buffer), L"testIng", sizeof("testIng") - 1);
     
     buffer->game_quads.quad_count = 0;
     buffer->ui_quads.quad_count = 0;
