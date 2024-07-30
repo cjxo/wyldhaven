@@ -39,16 +39,13 @@ typedef s32 b32;
 #error Unsupported OS
 #endif
 
-// #if defined(OS_WINDOWS)
-#pragma section(".rdata$", read)
-#define read_only static __declspec(allocate(".rdata$"))
-// #endif
+#if defined(_MSC_VER)
+# define COMPILER_CL
+#else
+# error Unsupported Compiler
+#endif
 
-// #if defined(COMPILER_CL)
-#define thread_var __declspec(thread)
-#define dll_export __declspec(dllexport)
-#define dll_import __declspec(dllimport)
-// #endif
+#include "wyld_compiler_stuff.h"
 
 #define assert_break() (*(volatile int *)0 = 0)
 #define stmnt(s) do{s}while(0)
@@ -78,6 +75,7 @@ typedef s32 b32;
 #define copy_struct(d,s) copy_memory(d,s,Minimum(sizeof(*(d)),sizeof(*(s))))
 #define clear_memory(d,sz) memset(d,'\0',sz)
 #define clear_struct(s) clear_memory(s,sizeof(*(s)))
+//#define clear_struct(s) clear_memory(&s,sizeof((s)))
 
 #define align_a_to_b(a,b) ((a)+((b)-1))&(~((b)-1))
 #define kb(v) (1024llu*(v))
@@ -96,24 +94,30 @@ typedef s32 b32;
 // NOTE(christian): I Kinda like this
 #define _str8(s) str8_make_from_c_str(#s,sizeof(#s)-1)
 
+#define sll_push_back_N(node,first,last,next) (((first)==0)?((first)=(last)=(node)):(((last)->next=(node)),(last)=(node)))
+#define sll_push_back(node,first,last) sll_push_back_N(node,first,last,next)
+
+#define sll_push_front_N(node,first,last,next) (((first)==0)?((first)=(last)=(node)):(((node)-(next=(first)),(first)=(node)))
+#define sll_push_front(node,first,last) sll_push_front_N(node,first,last,next)
+
 typedef struct {
-    u8 *string;
-    u64 char_count;
-    u64 char_capacity;
+  u8 *string;
+  u64 char_count;
+  u64 char_capacity;
 } String_U8_Const;
 
 typedef String_U8_Const String_U8;
 
 typedef struct {
-    u8 *memory;
-    u64 commit_ptr;
-    u64 stack_ptr;
-    u64 capacity;
+  u8 *memory;
+  u64 commit_ptr;
+  u64 stack_ptr;
+  u64 capacity;
 } Memory_Arena;
 
 typedef struct {
-    Memory_Arena *arena;
-    u64 start_stack_ptr;
+  Memory_Arena *arena;
+  u64 start_stack_ptr;
 } Temporary_Memory;
 
 //~ NOTE(christian): Tools
@@ -133,6 +137,7 @@ inl String_U8 str8_substring(Memory_Arena *arena, String_U8_Const source, u64 fr
 fun b32 str8_equal_strings(String_U8_Const a, String_U8_Const b);
 fun u64 str8_compute_hash(u64 base, String_U8_Const string);
 fun u64 str8_find_first_string(String_U8_Const string, String_U8_Const to_find, u64 offset_from_beginning_of_source);
+fun String_U8_Const str8_make_null(void);
 
 //~ NOTE(christian): mem
 #define arena_push_array(arena,type,count) (type *)arena_push(arena,sizeof(type)*(count))
@@ -150,7 +155,7 @@ inl Memory_Arena *arena_get_scratch(Memory_Arena **conflict, u64 conflict_count)
 #define pcg_default_increment_64 1442695040888963407ULL
 
 typedef struct {
-    u64 state;
+  u64 state;
 } PCG32_State;
 
 inl fun u32 pcg32_next_u32(PCG32_State *pcg);
@@ -166,5 +171,7 @@ inl u32 rnd_next_range_u32(u32 low, u32 high);
 inl f32 rnd_next_normal_f32(void);
 inl f32 rnd_next_binormal_f32(void);
 inl void rnd_seed(u64 seed);
+
+inl u32 bit_scan_forward(u64 val);
 
 #endif //WYLD_BASE_H

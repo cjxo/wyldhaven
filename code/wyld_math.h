@@ -4,69 +4,69 @@
 #define WYLD_MATH_H
 
 typedef union {
-    struct {
-        f32 x, y;
-    };
-    struct {
-        f32 width, height;
-    };
-    f32 v[2];
+  struct {
+    f32 x, y;
+  };
+  struct {
+    f32 width, height;
+  };
+  f32 v[2];
 } v2f;
 
 typedef union {
-    struct {
-        s32 x, y;
-    };
-    struct {
-        s32 width, height;
-    };
-    s32 v[2];
+  struct {
+    s32 x, y;
+  };
+  struct {
+    s32 width, height;
+  };
+  s32 v[2];
 } v2i;
 
 typedef union {
-    struct {
-        f32 x, y, z;
-    };
-    struct {
-        f32 r, g, b;
-    };
-    f32 v[3];
+  struct {
+    f32 x, y, z;
+  };
+  struct {
+    f32 r, g, b;
+  };
+  f32 v[3];
 } v3f;
 
 typedef union {
-    struct {
-        f32 x, y, z, w;
-    };
-    struct {
-        f32 r, g, b, a;
-    };
-    struct {
-        v3f xyz;
-        f32 __unused_a;
-    };
-    struct {
-        v3f rgb;
-        f32 __unused_b;
-    };
-    f32 v[4];
+  struct {
+    f32 x, y, z, w;
+  };
+  struct {
+    f32 r, g, b, a;
+  };
+  struct {
+    v3f xyz;
+    f32 __unused_a;
+  };
+  struct {
+    v3f rgb;
+    f32 __unused_b;
+  };
+  f32 v[4];
 } v4f;
 
 typedef union {
-    struct {
-        v4f r0, r1, r2, r3;
-    };
-    v4f rows[4];
-    f32 m[4][4];
+  struct {
+    v4f r0, r1, r2, r3;
+  };
+  v4f rows[4];
+  f32 m[4][4];
 } m44;
 
 typedef struct {
-    v2f p;
-    v2f dims;
+  v2f p;
+  v2f dims;
 } RectF32;
 
 typedef struct {
-    v2i p;
-    v2i dims;
+  v2i p;
+  v2i dims;
 } RectS32;
 
 #define pi_f32 3.141592653589f
@@ -88,6 +88,7 @@ inl v2i v2i_add(v2i a, v2i b);
 inl v2i v2i_sub(v2i a, v2i b);
 
 //~ NOTE(christian): v2fs
+#define v2f_zero() v2f_make(0,0)
 #define v2f_make_uniform(x) v2f_make(x,x)
 inl v2f v2f_make(f32 x, f32 y);
 inl v2f v2f_negate(v2f a);

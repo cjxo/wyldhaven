@@ -4,100 +4,101 @@
 #define WYLD_RENDER_H
 
 typedef union {
-    u64 h64[2];
+  u64 h64[2];
 } R2D_Handle;
 
 typedef u32 Light_Type;
 enum {
-    LightType_Direction,
-    LightType_Point,
+  LightType_Direction,
+  LightType_Point,
 };
 
 typedef u32 Light_Info;
 enum {
-    LightInfo_EnableLightingForMe = 0x1,
-    LightInfo_IsNotAffectedByLightIndex = 0x2,
-    LightInfo_LightIndexNotAffectedMask = 0x3C,
+  LightInfo_EnableLightingForMe = 0x1,
+  LightInfo_IsNotAffectedByLightIndex = 0x2,
+  LightInfo_LightIndexNotAffectedMask = 0x3C,
 };
 
 #define max_lights 8
 
 typedef struct {
-    v2f origin;
-    v2f x_axis;
-    v2f y_axis;
-    v4f corner_colours[4];
-    f32 corner_roundness;
-    f32 side_thickness;
-    v2f uvs[4];
-    u32 texture_id; // 0 if no texture, > 0 if yes texture
-    u32 lighting_info;
+  v2f origin;
+  v2f x_axis;
+  v2f y_axis;
+  v4f corner_colours[4];
+  f32 corner_roundness;
+  f32 side_thickness;
+  v2f uvs[4];
+  u32 texture_id; // 0 if no texture, > 0 if yes texture
+  u32 lighting_info;
 } R2D_Quad;
 
 typedef struct {
-    u32 x_p_in_atlas;
-    u32 y_p_in_atlas;
-    f32 advance;
-    f32 bearing_x, bearing_y;
-    f32 width, height;
+  u32 x_p_in_atlas;
+  u32 y_p_in_atlas;
+  f32 advance;
+  f32 bearing_x, bearing_y;
+  f32 width, height;
 } R2D_GlyphInfo;
 
 typedef struct {
-    R2D_GlyphInfo glyphs[128];
-    R2D_Handle atlas;
-    s32 ascent, descent;
-    f32 max_glyph_height;
+  R2D_GlyphInfo glyphs[128];
+  R2D_Handle atlas;
+  s32 ascent, descent;
+  f32 max_glyph_height;
 } R2D_FontParsed;
 
 typedef struct {
-    v4f p;
-    // ----- 16 byte ----- //
-    v4f colour;
-    // ----- 16 byte ----- //
-    f32 constant_attenuation;
-    f32 linear_attenuation;
-    f32 _unused_a[2];
-    // ----- 16 byte ----- //
-    Light_Type type; // 4 bytes
-    s32 is_enabled; // 4 bytes
-    f32 _unused_b[2]; // 8 bytes
-    // ----- 16 byte ----- //
+  v4f p;
+  // ----- 16 byte ----- //
+  v4f colour;
+  // ----- 16 byte ----- //
+  f32 constant_attenuation;
+  f32 linear_attenuation;
+  f32 _unused_a[2];
+  // ----- 16 byte ----- //
+  Light_Type type; // 4 bytes
+  s32 is_enabled; // 4 bytes
+  f32 _unused_b[2]; // 8 bytes
+  // ----- 16 byte ----- //
 } Light;
 
 typedef struct {
-    v4f ambient_colour; // ambient colour for dungeon / overworld / whatever
-    Light lights[max_lights];
-    s32 enable_lights[4];
+  v4f ambient_colour; // ambient colour for dungeon / overworld / whatever
+  Light lights[max_lights];
+  s32 enable_lights[4];
 } R2D_LightConstants;
 
 typedef struct {
-    u64 quad_count;
-    u64 quad_capacity;
-    R2D_Quad *quads;
+  u64 quad_count;
+  u64 quad_capacity;
+  R2D_Quad *quads;
 } R2D_QuadArray;
 
 typedef u8 Font_Size;
 enum {
-    FontSize_Small,
-    FontSize_Medium,
-    FontSize_Large,
-    FontSize_Count,
+  FontSize_Small,
+  FontSize_Medium,
+  FontSize_Large,
+  FontSize_Count,
 };
 
 typedef struct {
-    void *textures[4]; // allow only four textures
-    u8 free_texture_flag;
-    R2D_FontParsed font[FontSize_Count];
-    R2D_QuadArray game_quads;
-    R2D_QuadArray ui_quads;
-    R2D_LightConstants light_constants;
-    
-    void *reserved;
+  void *textures[4]; // allow only four textures
+  u8 free_texture_flag;
+  R2D_FontParsed font[FontSize_Count];
+  R2D_QuadArray game_quads;
+  R2D_QuadArray ui_quads;
+  R2D_LightConstants light_constants;
+  
+  void *reserved;
 } R2D_Buffer;
 
 //~ NOTE(christian): handle
 inl R2D_Handle r2d_bad_handle(void);
 inl b32 r2d_handles_match(R2D_Handle a, R2D_Handle b);
+inl b32 r2d_handle_is_bad(R2D_Handle a);
 inl void r2d_set_viewport_dims(R2D_Buffer *buffer, u32 width, u32 height);
 inl void r2d_get_viewport_dims(R2D_Buffer *buffer, u32 *width, u32 *height);
 

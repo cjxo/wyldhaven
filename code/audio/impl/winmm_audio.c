@@ -35,7 +35,7 @@ winmm_wave_out_proc(HWAVEOUT device_handle, UINT message, DWORD_PTR instance,
         } break;
         
         case WOM_DONE: {
-            OutputDebugStringA("Please give me more audio\n");
+            //OutputDebugStringA("Please give me more audio\n");
             
             // the device is done with block. Now, Request for new block
             os_semaphore_release(g_audio_device.semaphore_swap_buffer, 1, null);
