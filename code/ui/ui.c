@@ -27,7 +27,7 @@ ui_make_offset(UI_OffsetType type, UI_MetricType metric, f32 value) {
 }
 
 inl UI_ClippedTexture
-ui_make_clipped_texture(R2D_Handle handle, v2f clip_p, v2f clip_dims) {
+ui_make_clipped_texture(R_Handle handle, v2f clip_p, v2f clip_dims) {
   UI_ClippedTexture result;
   result.handle = handle;
   result.clip_p = clip_p;
@@ -38,7 +38,7 @@ ui_make_clipped_texture(R2D_Handle handle, v2f clip_p, v2f clip_dims) {
 inl UI_ClippedTexture
 ui_make_clipped_texture_null(void) {
   UI_ClippedTexture result;
-  result.handle = r2d_bad_handle();
+  result.handle = r_handle_make_bad();
   return(result);
 }
 
@@ -66,7 +66,8 @@ ui_make_drag_and_drop_item(UI_ClippedTexture texture, UI_DragAndDropFlags flags)
 
 inl b32
 ui_clipped_texture_is_null(UI_ClippedTexture test) {
-  return r2d_handles_match(test.handle, r2d_bad_handle());
+  b32 result = r_handle_match(test.handle, r_handle_make_bad());
+  return(result);
 }
 
 inl UI_IndividualSize
@@ -77,42 +78,116 @@ ui_make_individual_size(UI_IndividualSizeType type, f32 value) {
   return(result);
 }
 
-inl R2D_Quad *
+inl R_UI_Rect *
+ui_acquire_rect(R_RenderPass_UI *ui_pass) {
+  assert_true(ui_pass->rect_count < array_count(ui_pass->rects));
+  R_UI_Rect *rect = ui_pass->rects + ui_pass->rect_count++;
+  clear_memory(rect, sizeof(R_UI_Rect));
+  return(rect);
+}
+
+#define ui_rect_no_shadow(state,p,dims,colours,vertex_roundness,side_thickness)\
+ui_rect((state),(p),(dims),(colours),\
+(vertex_roundness),(side_thickness),1.0f,\
+v2f_make(0,0),v2f_make(0,0),ui_rect_colour(v4f_make(1,1,1,1)),\
+0.0f,0.0f)
+
+fun R_UI_Rect *
 ui_rect(UI_State *state, v2f p, v2f dims, UI_RectColours colours,
-        f32 corner_roundness, f32 side_thickness) {
-  assert_true(state->buffer != null);
-  R2D_Quad *quad = r2d_acquire_quad(&state->buffer->ui_quads);
-  quad->origin = p;
-  quad->x_axis = v2f_make(dims.x, 0.0f);
-  quad->y_axis = v2f_make(0.0f, dims.y);
-  quad->corner_colours[0] = colours.tl;
-  quad->corner_colours[1] = colours.tr;
-  quad->corner_colours[2] = colours.bl;
-  quad->corner_colours[3] = colours.br;
-  quad->corner_roundness = corner_roundness;
-  quad->side_thickness = side_thickness;
+        f32 vertex_roundness, f32 side_thickness, f32 side_smoothness,
+        v2f shadow_offset, v2f shadow_dim_offset, UI_RectColours shadow_colours,
+        f32 shadow_roundness, f32 shadow_smoothness) {
+  R_RenderPass_UI *ui_pass = state->pass;
+  R_UI_Rect *rect = ui_acquire_rect(ui_pass);
   
-  return(quad);
+  f32 dim_bias = maximum(side_smoothness,
+                         shadow_smoothness +
+                         maximum(shadow_offset.x, shadow_offset.y)) * 2.0f;
+  v2f dims_biased = v2f_add(dims, v2f_make(dim_bias, dim_bias));
+  
+  v2f p_biased = p;
+  p_biased = v2f_sub(p_biased, v2f_make(dim_bias * 0.5f, dim_bias * 0.5f));
+  
+  rect->p = p_biased;
+  rect->p_unbiased = p;
+  rect->dims = dims_biased;
+  rect->dims_unbiased = dims;
+  rect->vertex_colours[0] = colours.tl;
+  rect->vertex_colours[1] = colours.tr;
+  rect->vertex_colours[2] = colours.bl;
+  rect->vertex_colours[3] = colours.br;
+  rect->vertex_roundness = vertex_roundness;
+  rect->side_thickness = side_thickness;
+  rect->side_smoothness = side_smoothness;
+  
+  rect->shadow_offset = shadow_offset;
+  rect->shadow_dim_offset = shadow_dim_offset;
+  rect->shadow_colours[0] = shadow_colours.tl;
+  rect->shadow_colours[1] = shadow_colours.tr;
+  rect->shadow_colours[2] = shadow_colours.bl;
+  rect->shadow_colours[3] = shadow_colours.br;
+  rect->shadow_roundness = shadow_roundness;
+  rect->shadow_smoothness = shadow_smoothness;
+  
+  return(rect);
 }
 
-inl void
-ui_text(UI_State *state, Font_Size font_size, v2f p, v4f colour, String_U8_Const string) {
-  r2d_text(&state->buffer->ui_quads, state->buffer->font + font_size, p, colour, string);
+inl R_UI_Rect *
+ui_texture_mod(UI_State *state, UI_ClippedTexture texture, v2f p, v2f dims, v4f mod, f32 vertex_roundness) {
+  R_UI_Rect *rect = ui_rect(state, p, dims, ui_rect_colour(mod), vertex_roundness, 0.0f, 0.0f,
+                            v2f_make(0, 0), v2f_make(0, 0), ui_rect_colour(mod),
+                            0, 0);
+  r_uvs_from_clip(texture.clip_p, texture.clip_dims, texture.handle, rect->uvs);
+  rect->texture_id = (u32)texture.handle.h64[0];
+	return(rect);
 }
 
-inl R2D_Quad *
-ui_texture(UI_State *state, UI_ClippedTexture texture, v2f p, v2f dims, f32 corner_roundness) {
-	assert_true(state->buffer != null);
+inl R_UI_Rect *
+ui_texture(UI_State *state, UI_ClippedTexture texture, v2f p, v2f dims, f32 vertex_roundness) {
+  R_UI_Rect *result = ui_texture_mod(state, texture, p, dims,
+                                     v4f_make(1, 1, 1, 1),
+                                     vertex_roundness);
+  return(result);
+}
+
+fun void
+ui_text(UI_State *state, R_Font_Size font_size, v2f p, v4f colour, String_U8_Const string) {
+  assert_true(font_size < R_FontSize_Count);
   
-	R2D_Quad *quad = r2d_texture_clipped(&state->buffer->ui_quads, texture.handle, p,
-                                       dims, texture.clip_p, texture.clip_dims, v4f_make(1.0f, 1.0f, 1.0f, 1.0f));
-  quad->corner_roundness = corner_roundness;
-	return(quad);
+  f32 max_height = 0.0f;
+  for (u32 char_index = 0;
+       char_index < string.char_count;
+       ++char_index) {
+    R2D_GlyphInfo *glyph = state->buffer->font[font_size].glyphs + string.string[char_index];
+    if (glyph->height > max_height) {
+      max_height = glyph->height;
+    }
+  }
+  
+  for (u32 char_index = 0;
+       char_index < string.char_count;
+       ++char_index) {
+    R2D_GlyphInfo *glyph = state->buffer->font[font_size].glyphs + string.string[char_index];
+    if (string.string[char_index] != ' ') {
+      v2f final_p = p;
+      final_p.x += glyph->bearing_x;
+      final_p.y -= glyph->bearing_y;
+      final_p.y += max_height;
+      
+      UI_ClippedTexture ct = ui_make_clipped_texture(state->buffer->font[font_size].atlas,
+                                                     v2f_make((f32)glyph->x_p_in_atlas,
+                                                              (f32)glyph->y_p_in_atlas),
+                                                     v2f_make(glyph->width, glyph->height));
+      ui_texture_mod(state, ct, final_p, v2f_make(glyph->width, glyph->height), colour, 0.0f);
+    }
+    
+    p.x += glyph->advance;
+  }
 }
 
 // TODO(christian): man ..  should i allocate a big block at the beginning instead of doing this?
 inl void
-ui_initialize(UI_State *state, OS_Input *input, R2D_Buffer *buffer) {
+ui_initialize(UI_State *state, OS_Input *input, R_Buffer *buffer) {
   clear_struct(state);
   state->widget_arena = arena_reserve(align_a_to_b(1024 * sizeof(UI_Widget), 4096));
   state->util_arena = arena_reserve(kb(32));
@@ -373,7 +448,7 @@ ui_create_widget(UI_State *state, UI_WidgetFlag widget_flags, String_U8_Const id
       result->semantic_size[UIAxis_Y].container.value = ui_peek_text_padding_y_top_auto_pop(state);
       
       R2D_FontParsed *parsed_font = state->buffer->font + ui_peek_font_size_top_auto_pop(state);
-      result->text_dims = r2d_get_text_dims(parsed_font, result->content_string);
+      result->text_dims = r_text_get_dims(parsed_font, result->content_string);
       //result->text_dims.y = state->buffer->font.max_glyph_height;
       
       if (!((result->text_dims.x == 0) && (result->text_dims.y == 0))) {
@@ -886,14 +961,15 @@ ui_do_drag_and_drop_tex(UI_State *state, String_U8_Const identifier) {
 // Likewise, the thickness depends on the direction. If direction is X-Axis,
 // it refers to height. If direction is Y-Axis, then thickness refers to width.
 fun void
-ui_begin(UI_State *state, f32 elapsed_time_secs) {
+ui_begin(UI_State *state, f32 elapsed_time_secs, R_RenderPass_UI *ui_pass) {
   // TODO(christian): fix this
   //u32 view_width, view_height;
   //R2D_GetViewportDims(&view_width, &view_height);
   u32 view_width;
   u32 view_height;
-	r2d_get_viewport_dims(state->buffer, &view_width, &view_height);
+	r_viewport_get_dims(state->buffer, &view_width, &view_height);
   
+  state->pass = ui_pass;
   state->elapsed_time_secs = elapsed_time_secs;
   
   for (u32 bucket_index = 0; bucket_index < array_count(state->cache); bucket_index += 1) {
@@ -955,7 +1031,7 @@ ui_begin(UI_State *state, f32 elapsed_time_secs) {
   ui_push_text_padding_y(state, 8.0f);
   ui_push_padding_x(state, 0.0f);
   ui_push_padding_y(state, 0.0f);
-  ui_push_font_size(state, FontSize_Small);
+  ui_push_font_size(state, R_FontSize_Small);
   ui_push_texture(state, ui_make_clipped_texture_null());
   ui_push_individual_size_x(state, ui_make_individual_size(UIIndividualSize_Null, 0));
   ui_push_individual_size_y(state, ui_make_individual_size(UIIndividualSize_Null, 0));
@@ -1332,25 +1408,26 @@ ui_draw_widgets(UI_State *state, UI_Widget *root) {
 							invalid_code_path();
 						} break;
 					}
-          ui_rect(state, root->rect.p, dims, bg_colour, root->corner_roundness, 0.0f);
+          
+          ui_rect_no_shadow(state, root->rect.p, dims, bg_colour, root->corner_roundness, 0.0f);
 				}
         
 				if ((root->flags & UIWidget_BorderColour) && (root->edge_thickness >= 1.0f)) {
 					UI_RectColours border_colour = root->border_colour;
 					ui_scale_colours(&border_colour, colour_multiplier);
           
-					ui_rect(state, v2f_sub(root->rect.p, v2f_scale(v2f_make(root->edge_thickness, root->edge_thickness), 0.5f)),
-                  v2f_add(root->rect.dims, v2f_make(root->edge_thickness, root->edge_thickness)), border_colour,
-                  root->corner_roundness, root->edge_thickness);
+					ui_rect_no_shadow(state, v2f_sub(root->rect.p, v2f_scale(v2f_make(root->edge_thickness, root->edge_thickness), 0.5f)),
+                            v2f_add(root->rect.dims, v2f_make(root->edge_thickness, root->edge_thickness)), border_colour,
+                            root->corner_roundness, root->edge_thickness);
 				}
 			} break;
 		}
-	} else if (!r2d_handles_match(root->bound_texture.handle, r2d_bad_handle()) &&
+	} else if (!r_handle_match(root->bound_texture.handle, r_handle_make_bad()) &&
              (root->flags & UIWidget_AttatchTexture)) {
 		if (root->flags & UIWidget_BackgroundColour) {
 			UI_RectColours bg_colour = root->bg_colour;
 			ui_scale_colours(&bg_colour, colour_multiplier);
-			ui_rect(state, root->rect.p, root->rect.dims, bg_colour, root->corner_roundness, 0.0f);
+			ui_rect_no_shadow(state, root->rect.p, root->rect.dims, bg_colour, root->corner_roundness, 0.0f);
 		}
     
     // TODO(christian): UGLY! make root->bound_texture_p somewhat synchornized with root->rect.p 
@@ -1364,16 +1441,16 @@ ui_draw_widgets(UI_State *state, UI_Widget *root) {
 			UI_RectColours border_colour = root->border_colour;
 			ui_scale_colours(&border_colour, colour_multiplier);
       
-			ui_rect(state, v2f_sub(root->rect.p, v2f_scale(v2f_make(root->edge_thickness, root->edge_thickness), 0.5f)),
-              v2f_add(root->rect.dims, v2f_make(root->edge_thickness, root->edge_thickness)), border_colour,
-              root->corner_roundness, root->edge_thickness);
+			ui_rect_no_shadow(state, v2f_sub(root->rect.p, v2f_scale(v2f_make(root->edge_thickness, root->edge_thickness), 0.5f)),
+                        v2f_add(root->rect.dims, v2f_make(root->edge_thickness, root->edge_thickness)), border_colour,
+                        root->corner_roundness, root->edge_thickness);
 		}
 	} else {
 		if (root->flags & UIWidget_BackgroundColour) {
 			UI_RectColours bg_colour = root->bg_colour;
 			ui_scale_colours(&bg_colour, colour_multiplier);
 			
-			ui_rect(state, root->rect.p, root->rect.dims, bg_colour, root->corner_roundness, 0.0f);
+			ui_rect_no_shadow(state, root->rect.p, root->rect.dims, bg_colour, root->corner_roundness, 0.0f);
 		}
 		
 		if ((root->flags & UIWidget_BorderColour) &&
@@ -1381,9 +1458,9 @@ ui_draw_widgets(UI_State *state, UI_Widget *root) {
 			UI_RectColours border_colour = root->border_colour;
 			ui_scale_colours(&border_colour, colour_multiplier);
 			
-			ui_rect(state, v2f_sub(root->rect.p, v2f_scale(v2f_make(root->edge_thickness, root->edge_thickness), 0.5f)),
-              v2f_add(root->rect.dims, v2f_make(root->edge_thickness, root->edge_thickness)), border_colour,
-              root->corner_roundness, root->edge_thickness);
+			ui_rect_no_shadow(state, v2f_sub(root->rect.p, v2f_scale(v2f_make(root->edge_thickness, root->edge_thickness), 0.5f)),
+                        v2f_add(root->rect.dims, v2f_make(root->edge_thickness, root->edge_thickness)), border_colour,
+                        root->corner_roundness, root->edge_thickness);
 		}
 		
 		if (root->flags & UIWidget_TextContent) {

@@ -5,34 +5,15 @@
 
 typedef union {
   u64 h64[2];
-} R2D_Handle;
+} R_Handle;
 
-typedef u32 Light_Type;
+typedef u8 R_Font_Size;
 enum {
-  LightType_Direction,
-  LightType_Point,
+  R_FontSize_Small,
+  R_FontSize_Medium,
+  R_FontSize_Large,
+  R_FontSize_Count,
 };
-
-typedef u32 Light_Info;
-enum {
-  LightInfo_EnableLightingForMe = 0x1,
-  LightInfo_IsNotAffectedByLightIndex = 0x2,
-  LightInfo_LightIndexNotAffectedMask = 0x3C,
-};
-
-#define max_lights 8
-
-typedef struct {
-  v2f origin;
-  v2f x_axis;
-  v2f y_axis;
-  v4f corner_colours[4];
-  f32 corner_roundness;
-  f32 side_thickness;
-  v2f uvs[4];
-  u32 texture_id; // 0 if no texture, > 0 if yes texture
-  u32 lighting_info;
-} R2D_Quad;
 
 typedef struct {
   u32 x_p_in_atlas;
@@ -44,87 +25,139 @@ typedef struct {
 
 typedef struct {
   R2D_GlyphInfo glyphs[128];
-  R2D_Handle atlas;
+  R_Handle atlas;
   s32 ascent, descent;
   f32 max_glyph_height;
 } R2D_FontParsed;
 
+//~ NOTE(christian): new api area
 typedef struct {
-  v4f p;
-  // ----- 16 byte ----- //
-  v4f colour;
-  // ----- 16 byte ----- //
-  f32 constant_attenuation;
-  f32 linear_attenuation;
-  f32 _unused_a[2];
-  // ----- 16 byte ----- //
-  Light_Type type; // 4 bytes
-  s32 is_enabled; // 4 bytes
-  f32 _unused_b[2]; // 8 bytes
-  // ----- 16 byte ----- //
-} Light;
+  v2f p;
+  v2f p_unbiased;
+  v2f dims;
+  v2f dims_unbiased;
+  v4f vertex_colours[4];
+  f32 vertex_roundness;
+  f32 side_thickness;
+  f32 side_smoothness;
+  
+  v2f shadow_offset;
+  v2f shadow_dim_offset;
+  v4f shadow_colours[4];
+  f32 shadow_roundness;
+  f32 shadow_smoothness;
+  
+  v2f uvs[4];
+  u32 texture_id; // 0 if no texture, > 0 if yes texture
+} R_UI_Rect;
 
+typedef struct {
+  v2f p;
+  v2f dims;
+  v4f vertex_colours[4];
+  v2f uvs[4];
+  u32 texture_id; // 0 if no texture, > 0 if yes texture
+} R_O2D_Rect;
+
+typedef u32 R_RenderPass_GameMesh_Type;
+enum {
+  R_RenderPass_GameMesh_Plane,
+  R_RenderPass_GameMesh_Count,
+};
+typedef struct {
+  v3f p;
+  v3f scale;
+  v3f rotate;
+} R3D_MeshInstance;
+
+typedef u16 R_Light_Type;
+enum {
+  R_LightType_Point,
+  R_LightType_Direction,
+  R_LightType_Spotlight,
+  R_LightType_Count
+};
+
+typedef struct {
+  R_Light_Type type;
+} R3D_Light;
+
+#define r_max_lights 8
 typedef struct {
   v4f ambient_colour; // ambient colour for dungeon / overworld / whatever
-  Light lights[max_lights];
-  s32 enable_lights[4];
-} R2D_LightConstants;
+  R3D_Light lights[r_max_lights];
+} R3D_LightConstants;
 
 typedef struct {
-  u64 quad_count;
-  u64 quad_capacity;
-  R2D_Quad *quads;
-} R2D_QuadArray;
+  // TODO: we even need roundness here in this rect?
+  R_O2D_Rect rects[512];
+  u64 rect_count;
+} R_RenderPass_Game_Ortho2D;
 
-typedef u8 Font_Size;
+typedef struct {
+  //R_RenderPass_GameMesh_Type mesh_type;
+  R3D_LightConstants light_constants;
+  R3D_MeshInstance instances[512];
+} R_RenderPass_Game_Ortho3D;
+
+typedef struct {
+  R_UI_Rect rects[512];
+  u64 rect_count;
+} R_RenderPass_UI;
+
+typedef u32 R_RenderPassType;
 enum {
-  FontSize_Small,
-  FontSize_Medium,
-  FontSize_Large,
-  FontSize_Count,
+  R_RenderPassType_Game_Ortho2D,
+  R_RenderPassType_Game_Ortho3D,
+  R_RenderPassType_UI,
+  R_RenderPassType_ScreenBlur,
+  R_RenderPassType_Count,
+};
+
+typedef struct R_RenderPass R_RenderPass;
+struct R_RenderPass {
+  R_RenderPassType type;
+  
+  union {
+    R_RenderPass_Game_Ortho2D game_ortho_2D;
+    R_RenderPass_Game_Ortho3D game_ortho_3D;
+    R_RenderPass_UI ui;
+  };
+  
+  R_RenderPass *next;
 };
 
 typedef struct {
   void *textures[4]; // allow only four textures
   u8 free_texture_flag;
-  R2D_FontParsed font[FontSize_Count];
-  R2D_QuadArray game_quads;
-  R2D_QuadArray ui_quads;
-  R2D_LightConstants light_constants;
+  R2D_FontParsed font[R_FontSize_Count];
   
+  Memory_Arena *arena;
+  R_RenderPass *free_passes;
+  R_RenderPass *first_pass;
+  R_RenderPass *last_pass;
   void *reserved;
-} R2D_Buffer;
+} R_Buffer;
 
-//~ NOTE(christian): handle
-inl R2D_Handle r2d_bad_handle(void);
-inl b32 r2d_handles_match(R2D_Handle a, R2D_Handle b);
-inl b32 r2d_handle_is_bad(R2D_Handle a);
-inl void r2d_set_viewport_dims(R2D_Buffer *buffer, u32 width, u32 height);
-inl void r2d_get_viewport_dims(R2D_Buffer *buffer, u32 *width, u32 *height);
+inl R_Handle r_handle_make_bad(void);
+inl b32 r_handle_match(R_Handle a, R_Handle b);
+inl b32 r_handle_is_bad(R_Handle a);
 
-//~ NOTE(christian): init
-inl b32 r2d_initialize(R2D_Buffer *buffer, OS_Window *window);
+fun R_Buffer *r_buffer_create(OS_Window *window);
 
-//~ NOTE(christian): tex: all point sampled, DXGI_FORMAT_R8G8B8A8_UNORM, immytable. fow now.
-inl R2D_Handle r2d_alloc_texture(R2D_Buffer *buffer, s32 width, s32 height, void *data);
-inl b32 r2d_get_texture_dims(R2D_Handle tex, s32 *width, s32 *height);
-inl v2f r2d_get_texture_dims_v(R2D_Handle tex);
-inl R2D_Handle r2d_texture_from_file(R2D_Buffer *buffer, String_U8_Const filename);
+fun b32 r_texture_get_dims(R_Handle handle, s32 *width, s32 *height);
+inl v2f r_texture_get_dims_v(R_Handle handle);
+fun R_Handle r_texture_alloc(R_Buffer *buffer, s32 width, s32 height, void *data);
 
-//~ NOTE(christian): draw
-inl void r2d_begin_render(R2D_Buffer *buffer);
-inl void r2d_end_render(R2D_Buffer *buffer);
+fun v2f r_text_get_dims(R2D_FontParsed *font, String_U8_Const string);
 
-inl R2D_Quad *r2d_acquire_quad(R2D_QuadArray *quad_array);
-inl R2D_Quad *r2d_rect_filled(R2D_QuadArray *quad_array, v2f p, v2f dims, v4f colour, f32 corner_roundness);
-inl R2D_Quad *r2d_rect_outline(R2D_QuadArray *quad_array, v2f p, v2f dims, v4f colour, f32 corner_roundness, f32 side_thickness);
-inl R2D_Quad *r2d_line(R2D_QuadArray *quad_array, v2f v0, v2f v1, v4f colour);
-inl R2D_Quad *r2d_texture_clipped(R2D_QuadArray *quad_array, R2D_Handle texture_handle, v2f p, v2f dims, v2f clip_p, v2f clip_dims, v4f mod);
-inl R2D_Quad *r2d_texture(R2D_QuadArray *quad_array, R2D_Handle texture_handle, v2f p, v2f dims, v4f mod);
-fun void r2d_text(R2D_QuadArray *quad_array, R2D_FontParsed *font, v2f p, v4f colour, String_U8_Const text);
-inl v2f r2d_get_text_dims(R2D_FontParsed *font, String_U8_Const string);
+// ORTHO2D
+fun R_O2D_Rect *r_O2D_acquire_rect(R_RenderPass *pass);
+inl R_O2D_Rect *r_O2D_rect_filled(R_RenderPass *pass, v2f p, v2f dims, v4f colour);
+fun R_O2D_Rect *r_O2D_texture_clipped(R_RenderPass *pass, R_Handle texture_handle, v2f p, v2f dims, v2f clip_p, v2f clip_dims, v4f mod);
+fun R_O2D_Rect *r_O2D_texture(R_RenderPass *pass, R_Handle texture_handle, v2f p, v2f dims, v4f mod);
 
-//~ NOTE(christian): send
-inl b32 r2d_upload_to_gpu(R2D_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f32 clear_b, f32 clear_a);
+fun R_RenderPass *r_begin_pass(R_Buffer *buffer, R_RenderPassType type);
+fun void r_submit_passes_to_gpu(R_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f32 clear_b, f32 clear_a);
 
 #endif //WYLD_RENDER_H

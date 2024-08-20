@@ -21,10 +21,24 @@ typedef struct {
 	// NOTE(christian): Shared buffers for game and UI
   ID3D11Buffer *main_constant_buffer;
   
+  // NOTE(christian): Ortho2D
+  ID3D11VertexShader *ortho2d_vertex_shader;
+  ID3D11PixelShader *ortho2d_pixel_shader;
+  ID3D11Buffer *ortho2d_quad_buffer;
+  ID3D11Buffer *ortho2d_main_constant_buffer;
+  ID3D11Buffer *ortho2d_light_constant_buffer;
+  
+  // NOTE(christian): Ortho3D
+  ID3D11VertexShader *ortho3d_vertex_shader;
+  ID3D11PixelShader *ortho3d_pixel_shader;
+  ID3D11Buffer *ortho3d_instance_buffer;
+  ID3D11Buffer *ortho3d_main_constant_buffer;
+  ID3D11Buffer *ortho3d_light_constant_buffer;
+  
 	// NOTE(christian): UI renderer
-  //    ID3D11VertexShader *ui_vertex_shader;
-  //  ID3D11PixelShader *ui_pixel_shader;
-  //  ID3D11Buffer *ui_quad_buffer;
+  ID3D11VertexShader *ui_vertex_shader;
+  ID3D11PixelShader *ui_pixel_shader;
+  ID3D11Buffer *ui_quad_buffer;
   
   //~ NOTE(christian): game renderer
   ID3D11BlendState1 *quad_blend_state;
@@ -628,7 +642,7 @@ r2d_initialize(R2D_Buffer *buffer, OS_Window *window) {
     FT_Library ft_library;
     FT_Face ft_face;
     
-    read_only u32 face_sizes[FontSize_Count] = {
+    read_only u32 face_sizes[R_FontSize_Count] = {
       8, 10, 12
     };
     
@@ -647,7 +661,7 @@ r2d_initialize(R2D_Buffer *buffer, OS_Window *window) {
         u8 *glyph_atlas = (u8 *)(arena_push(font_parse_scratch, bytes_per_pixel * atlas_width * atlas_height));
         
         //f32 dpi = 96.0f;
-        for (u32 font_size_index = 0; font_size_index < FontSize_Count; ++font_size_index) {
+        for (u32 font_size_index = 0; font_size_index < R_FontSize_Count; ++font_size_index) {
           u32 glyph_atlas_col = glyph_atlas_gap;
           u32 glyph_atlas_row = glyph_atlas_gap;
           R2D_FontParsed *font_parsed = buffer->font + font_size_index;

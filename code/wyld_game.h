@@ -183,11 +183,10 @@ typedef struct {
   Memory_Arena *main_arena;
   UI_State ui_state;
   Work_Queue work_queue;
-  R2D_Buffer r2d_buffer;
   
   b32 has_initialized;
   
-  R2D_Handle sprite_sheet;
+  R_Handle sprite_sheet;
   Game_Level levels[max_level_depth];
   u32 player_current_level;
   b32 climb_up_or_down_debounce;

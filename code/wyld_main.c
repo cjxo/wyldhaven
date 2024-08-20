@@ -351,15 +351,10 @@ cam2d_update(Camera2D *camera, OS_Input *input, v2f level_dims_pix) {
 // TODO(christian): decide if we need to use Sprite_TYpe instead of Dungeon_Tile_Type
 // But I dont think I need to ... because to 
 fun void
-draw_dun_tile(Game_State *game_state, R2D_Buffer *buffer, v2f p, v2f dims, Dungeon_Tile *tile) {
-  R2D_QuadArray *quad_array = &(buffer->game_quads);
-  
-  assert_true(quad_array->quads != null);
-  
+draw_dun_tile(Game_State *game_state, R_RenderPass *game_pass, v2f p, v2f dims, Dungeon_Tile *tile) {
   v2f clip_p = { 0 };
   v2f clip_dim = v2f_make(16, 16);
   
-  Light_Info light_info = 0;
   switch (tile->type) {
     case DunTile_WallFront: {
       clip_p = v2f_make(32, 16);
@@ -398,12 +393,8 @@ draw_dun_tile(Game_State *game_state, R2D_Buffer *buffer, v2f p, v2f dims, Dunge
     } break;
   }
   
-  if (tile->flags & DunTileFlag_Illuminated) {
-    light_info |= LightInfo_EnableLightingForMe;
-  }
-  
-  R2D_Quad *quad = r2d_texture_clipped(quad_array, game_state->sprite_sheet, p, dims, clip_p, clip_dim, rgba_make(1, 1, 1, 1));
-  quad->lighting_info = light_info;
+  r_O2D_texture_clipped(game_pass, game_state->sprite_sheet, p, dims, clip_p, clip_dim, rgba_make(1, 1, 1, 1));
+  //r_O2D_rect_filled(game_pass, p, dims, rgba_make(1, 1, 0, 1));
   //draw_sprite(game_state, p, dims, dun_tile_type); // for now it directly maps to Sprite_TYpe;
 }
 
@@ -722,7 +713,7 @@ game_ui_player_info(Game_State *game_state, OS_Input *input) {
   // - steal idea: https://www.google.com/search?q=roguelike+stat+attribute+UI+upgrades&sca_esv=bdce78cde9db5882&rlz=1C1ONGR_enPH1088PH1088&udm=2&biw=1536&bih=695&ei=WNUpZvKUIe6RseMPh9-7kAE&ved=0ahUKEwjyoJmdvdyFAxXuSGwGHYfvDhIQ4dUDCBA&uact=5&oq=roguelike+stat+attribute+UI+upgrades&gs_lp=Egxnd3Mtd2l6LXNlcnAiJHJvZ3VlbGlrZSBzdGF0IGF0dHJpYnV0ZSBVSSB1cGdyYWRlc0jjHVAAWJgdcAB4AJABAZgBggKgAcISqgEGMC4xNi4yuAEDyAEA-AEBmAIAoAIAmAMAkgcAoAeqBg&sclient=gws-wiz-serp#vhid=zXt7mW6vY066AM&vssid=mosaic
   // - steal idea: https://www.google.com/search?sca_esv=8d63fbbca7a20b91&udm=2&q=physical+defence+pixel+art&spell=1&sa=X&ved=2ahUKEwiml-XvtfOFAxUvbmwGHd-rAjEQBSgAegQIBxAC&biw=1536&bih=703&dpr=1.25#vhid=yyhA0tPMEMtJ_M&vssid=mosaic
   if (game_state->open_attrib_upgrade) {
-    v4f text_colour = rgba_from_hsva(355.0f, 20.0f, 90.0f, 1.0);
+    //v4f text_colour = rgba_from_hsva(355.0f, 20.0f, 90.0f, 1.0);
     //v4f text_colour = rgba_from_hsva(68.0f, 36.0f, 52.0f, 1.0);
     v4f attribute_upgrades_bg_col = rgba_from_hsva(330.0f, 47.0f, 26.0f, 1.0);
     v4f attribute_upgrades_border_col = rgba_from_hsva(10.0f, 25.0f, 80.0f, 1.0);
@@ -736,7 +727,7 @@ game_ui_player_info(Game_State *game_state, OS_Input *input) {
       ui_next_transparent_border(state);
       ui_next_offset_x(state, ui_make_offset(UIOffsetType_Relative, UIMetricType_Percentage, 0.5f));
       ui_next_anchor_x(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
-      ui_next_font_size(state, FontSize_Medium);
+      ui_next_font_size(state, R_FontSize_Medium);
       ui_do_label(state, str8("(Player Class) Player Name"));
       
       ui_push_edge_thickness(state, 0.0f);
@@ -1083,7 +1074,7 @@ game_ui_player_info(Game_State *game_state, OS_Input *input) {
       ui_push_hori_layout(state, str8("player-equipment-and-inventory"), v2f_make(0.0f, 0.0f), v2f_make(12.0f, 0.0f)); {
         ui_next_edge_thickness(state, 1.0f);
         ui_push_vert_layout(state, str8("player-currently-equipped-stuff"), v2f_make(16.0f, 16.0f), v2f_make(0.0f, 8.0f)); {
-          ui_next_font_size(state, FontSize_Large);
+          ui_next_font_size(state, R_FontSize_Large);
           ui_next_text_padding(state, 0.0f);
           ui_push_edge_thickness(state, 0.0f);
           ui_next_anchor_x(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
@@ -1122,7 +1113,7 @@ game_ui_player_info(Game_State *game_state, OS_Input *input) {
         
         ui_next_edge_thickness(state, 1.0f);
         ui_push_vert_layout(state, str8("player-inventory-expanded"), v2f_make(16.0f, 16.0f), v2f_make(0.0f, 6.0f)); {
-          ui_next_font_size(state, FontSize_Large);
+          ui_next_font_size(state, R_FontSize_Large);
           ui_next_text_padding(state, 0.0f);
           ui_push_edge_thickness(state, 0.0f);
           ui_next_anchor_x(state, ui_make_anchor(UIMetricType_Percentage, 0.5f));
@@ -1244,7 +1235,9 @@ game_ui_player_info(Game_State *game_state, OS_Input *input) {
 }
 
 fun void
-game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_buffer, f32 dt_step) {
+game_update_and_render(Game_State *game_state, OS_Input *input,
+                       R_Buffer *buffer, f32 dt_step) {
+  R_RenderPass *game_pass = r_begin_pass(buffer, R_RenderPassType_Game_Ortho2D);
   prof_begin_timed_block();
   v2i player_request_walk = { 0 };
   if (os_key_pressed(input, OSInputKey_W)) {
@@ -1343,7 +1336,7 @@ game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_
   v2f player_screen_p = v2f_add(cam2d_world_to_screen(camera, player->p), v2f_make(16.0f, 16.0f));
   
   for (s32 tile_y = render_begin.y; tile_y < render_end.y; tile_y += 1) {
-    for (s32 tile_x = render_begin.x; tile_x < render_end.x; tile_x += 1) {
+    for (s32 tile_x = render_begin.x; tile_x < (render_end.x); tile_x += 1) {
       s32 index = tile_y * level->width + tile_x;
       Dungeon_Tile *tile = level->tiles + index;
       if (!game_state->debug_enabled_tile_occulution || ((tile->flags & DunTileFlag_IsNotDiscoveredByPlayer) == 0)) {
@@ -1353,20 +1346,23 @@ game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_
         
         p = cam2d_world_to_screen(camera, p);
         
-        draw_dun_tile(game_state, r2d_buffer, p, tile_dims_screen_v, tile);
+        draw_dun_tile(game_state, game_pass, p, tile_dims_screen_v, tile);
       }
       
       tile->flags &= ~(DunTileFlag_Illuminated | DunTileFlag_IlluminatedByPlayer);
     }
   }
   
-  R2D_Quad *quad = r2d_rect_filled(&r2d_buffer->game_quads, player_screen_p, v2f_scale(tile_dims_screen_v, 0.25f), rgba_make(1, 1, 1, 1), v2f_scale(tile_dims_screen_v, 0.25f).x * 0.5f);
-  quad->lighting_info |= LightInfo_EnableLightingForMe;
-  quad->lighting_info |= LightInfo_IsNotAffectedByLightIndex;
+  //r_O2D_rect_filled(game_pass, v2f_make(100, 500), v2f_make(50, 50), v4f_make(1, 0, 0, 1));
+  r_O2D_rect_filled(game_pass, player_screen_p, v2f_scale(tile_dims_screen_v, 0.25f), rgba_make(1, 1, 1, 1));
+  //R2D_Quad *quad = r2d_rect_filled(&r2d_buffer->game_quads, player_screen_p, v2f_scale(tile_dims_screen_v, 0.25f), rgba_make(1, 1, 1, 1), v2f_scale(tile_dims_screen_v, 0.25f).x * 0.5f);
+  //quad->lighting_info |= LightInfo_EnableLightingForMe;
+  //quad->lighting_info |= LightInfo_IsNotAffectedByLightIndex;
   //quad->lighting_info |= 0 << 2; // the light index its not affected by is 0
   
-  ui_begin(ui_state, dt_step); {
 #if 1
+  R_RenderPass *ui_pass = r_begin_pass(buffer, R_RenderPassType_UI);
+  ui_begin(ui_state, dt_step, &(ui_pass->ui)); {
     loc b32 open_layout = false;
     
     ui_push_hori_layout(ui_state, str8("main buttons"), v2f_make_uniform(4.0f), v2f_make_uniform(4.0f)); {
@@ -1416,8 +1412,8 @@ game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_
           ui_do_labelf(ui_state, str8("UI widget arena allocs: %llu"), ui_state->widget_arena->stack_ptr);
           ui_do_labelf(ui_state, str8("UI widget util allocs: %llu"), ui_state->util_arena->stack_ptr);
           ui_do_labelf(ui_state, str8("Player Current level: %llu"), game_state->player_current_level);
-          if (ui_do_button(ui_state, str8("Toggle Lights")).released) {
-            r2d_buffer->light_constants.enable_lights[0] = !r2d_buffer->light_constants.enable_lights[0];
+          if (ui_do_button(ui_state, str8("Toggle Lights: TODO IMPLEMENT")).released) {
+            //r2d_buffer->light_constants.enable_lights[0] = !r2d_buffer->light_constants.enable_lights[0];
           }
           
           if (ui_do_button(ui_state, str8("Toggle Tile Occlusion")).released) {
@@ -1429,7 +1425,6 @@ game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_
       } ui_pop_layout(ui_state);
     }
     ui_pop_corner_roundness(ui_state);
-#endif
     if (ui_do_button(ui_state, str8("AntiDupe###Add 10 exp")).released) {
       player->exp += 15;
       if (player->exp >= player->max_exp) {
@@ -1445,7 +1440,9 @@ game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_
     
     game_ui_player_info(game_state, input);
   } ui_end(ui_state);
+#endif
   
+  /*
   r2d_buffer->light_constants.ambient_colour = v4f_make(0.02f, 0.02f, 0.02f, 1.0f);
   //r2d_buffer.light_constants.enable_lights[0] = 1;
   r2d_buffer->light_constants.lights[0].p = v4f_make(player_screen_p.x, player_screen_p.y, 0.0f, 0.0f);
@@ -1454,7 +1451,7 @@ game_update_and_render(Game_State *game_state, OS_Input *input, R2D_Buffer *r2d_
   r2d_buffer->light_constants.lights[0].linear_attenuation = 0.03f;
   r2d_buffer->light_constants.lights[0].type = LightType_Point;
   r2d_buffer->light_constants.lights[0].is_enabled = true;
-  
+  */
   prof_end_timed_block();
 }
 
@@ -1503,12 +1500,12 @@ test_audio_callback(u32 buffer_sz_bytes, u8 *buffer_ptr, void *user_data) {
     }
     
     sound->sound_index_in_bytes += buffer_sz_bytes;
-  }
-  else {
+  } else {
     clear_memory(buffer_ptr, buffer_sz_bytes);
   }
-  
 }
+
+
 
 int __stdcall
 WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdShow) {
@@ -1526,22 +1523,60 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
     f64 target_seconds_per_frame = 1.0 / (f64)frames_per_second;
     f32 game_update_seconds = (f32)target_seconds_per_frame;
     
-    R2D_Buffer r2d_buffer;
-    r2d_initialize(&r2d_buffer, window);
-    r2d_set_viewport_dims(&r2d_buffer, 1280, 720);
+#if 0
+    R_Buffer *buffer = r_buffer_create(window);
+    UI_State ui_state;
+    ui_initialize(&ui_state, &window->input, null);
+    b32 is_running = true;
+    u64 ticks_begin_for_work = os_get_ticks();
+    
+    r_viewport_set_dims(buffer, 1280, 720);
+    while (is_running) {
+      os_fill_events(window);
+      if (os_get_misc_input_flag(&window->input, OSInputMisc_Quit) ||
+          os_key_released(&window->input, OSInputKey_Escape)) {
+        is_running = false;
+      }
+      
+      R_RenderPass *game_pass = r_begin_pass(buffer, R_RenderPassType_Game_Ortho2D);
+      r_O2D_rect_filled(game_pass, v2f_make(300, 300), v2f_make(50, 50), v4f_make(1.0f, 0.0f, 0.0f, 1.0));
+      r_O2D_rect_filled(game_pass, v2f_make(300, 275), v2f_make(50, 50), v4f_make(0.0f, 1.0f, 0.0f, 1.0));
+      r_O2D_texture(game_pass, buffer->font[2].atlas, v2f_make(0, 0), v2f_make(512, 512), v4f_make(1.0f, 1.0f, 1.0f, 1.0));
+      
+      R_RenderPass *ui_pass = r_begin_pass(buffer, R_RenderPassType_UI);
+      ui_state.pass = &(ui_pass->ui);
+      ui_state.buffer = buffer;
+      
+      v4f colour = v4f_make(0.3f, 0.2f, 0.7f, 1.0f);
+      v4f s_colour = v4f_make(0.5f, 0.1f, 0.1f, 1.0f);
+      ui_rect(&ui_state, v2f_make(1000, 200), v2f_make(200, 200),
+              ui_rect_colour(colour),
+              100.0f, 0.0f, 1.0f,
+              v2f_make(0, 0), v2f_make(0, 0), ui_rect_colour(s_colour),
+              100.0f, 40.0f);
+      
+      ui_text(&ui_state, R_FontSize_Small, v2f_make(0, 400), v4f_make(0, 0, 1, 1), str8("hello world"));
+      
+      r_submit_passes_to_gpu(buffer, true, 0, 0, 0, 1);
+      
+      u64 ticks_end_for_work = os_get_ticks();
+      f64 seconds_elapsed_for_work = os_secs_between_ticks(ticks_begin_for_work, ticks_end_for_work);
+      if (seconds_elapsed_for_work < target_seconds_per_frame) {
+        os_sleep((u32)((target_seconds_per_frame - seconds_elapsed_for_work) * 1000.0f));
+      }
+      
+      ticks_begin_for_work = os_get_ticks();
+    }
+#else
+    R_Buffer *r_buffer = r_buffer_create(window);
+    //r2d_initialize(&r2d_buffer, window);
+    r_viewport_set_dims(r_buffer, 1280, 720);
     
     Game_State game_state = { 0 };
     game_state.main_arena = arena_reserve(mb(16));
     
-    ui_initialize(&(game_state.ui_state), &window->input, &r2d_buffer);
-    game_state.sprite_sheet = r2d_texture_from_file(&r2d_buffer, str8("..\\data\\assets\\texture\\tiles.png"));
-#if 0
-    game_state.d_and_d_group = dandd_group_make(game_state.main_arena, 4, 4, DragAndDropFlag_Weapon);
-    game_state.d_and_d_group.boxes->item = dandd_item_make(game_state.sprite_sheet,
-                                                           v2f_make(7.0f * 16.0f, 3.0f * 16.0f),
-                                                           v2f_make(16.0f, 16.0f),
-                                                           DragAndDropFlag_Weapon);
-#endif
+    ui_initialize(&(game_state.ui_state), &window->input, r_buffer);
+    game_state.sprite_sheet = r_texture_from_file(r_buffer, str8("..\\data\\assets\\texture\\tiles.png"));
     
     game_init_player(&game_state);
     game_state.camera = cam2d_make(v2f_make(1280.0f, 720.0f), v2f_make(2.0f, 2.0f), &game_state.player);
@@ -1647,7 +1682,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
       temp_mem_end(temp);
     }
     
-    r2d_buffer.light_constants.enable_lights[0] = true;
+    //r2d_buffer.light_constants.enable_lights[0] = true;
     
     game_state.tile_dims = 32;
     game_state.debug_enabled_tile_occulution = true;
@@ -1665,10 +1700,9 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
         cam2d_resize(&game_state.camera, v2f_make((f32)window->client_width, (f32)window->client_height));
       }
       
-      game_update_and_render(&game_state, &window->input, &r2d_buffer, game_update_seconds);
-      //r2d_texture(&r2d_buffer.ui_quads, r2d_buffer.font[2].atlas, v2f_make(0.0f, 0.0f), v2f_make(512.0f, 512.0f), v4f_make(1.0f, 1.0f, 1.0f, 1.0f));
-      //r2d_text(&r2d_buffer.ui_quads, r2d_buffer.font, v2f_make(0.0f, 0.0f), v4f_make(1.0f, 1.0f, 1.0f, 1.0f), str8("TestIng"));
-      r2d_upload_to_gpu(&r2d_buffer, true, 0.0f, 0.0f, 0.0f, 1.0f);
+      game_update_and_render(&game_state, &window->input, r_buffer, game_update_seconds);
+      r_submit_passes_to_gpu(r_buffer, true, 0.0f, 0.0f, 0.0f, 1.0f);
+      
       
       u64 ticks_end_for_work = os_get_ticks();
       f64 seconds_elapsed_for_work = os_secs_between_ticks(ticks_begin_for_work, ticks_end_for_work);
@@ -1678,8 +1712,9 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
       
       ticks_begin_for_work = os_get_ticks();
     }
+#endif
+    
   }
-  
   os_exit_process(0);
 }
 

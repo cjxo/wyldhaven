@@ -90,9 +90,9 @@ typedef s32 b32;
 #define concat_(a,b) a##b
 #define concat(a,b) concat_(a,b)
 
-#define str8(s) str8_make_from_c_str(s,sizeof(s)-1)
+#define str8(s) str8_make_from_c_str_n(s,sizeof(s)-1)
 // NOTE(christian): I Kinda like this
-#define _str8(s) str8_make_from_c_str(#s,sizeof(#s)-1)
+#define _str8(s) str8_make_from_c_str_n(#s,sizeof(#s)-1)
 
 #define sll_push_back_N(node,first,last,next) (((first)==0)?((first)=(last)=(node)):(((last)->next=(node)),(last)=(node)))
 #define sll_push_back(node,first,last) sll_push_back_N(node,first,last,next)
@@ -125,8 +125,23 @@ inl b32 is_alpha(u8 c);
 inl b32 is_digit(u8 c);
 inl b32 is_alpha_numeric(u8 c);
 
+#if defined(WC_DEBUG)
+#define assert_msgbox(cond,title,message) \
+do{\
+if(!(cond)) {\
+assert_break_message_box(__FILE__,__func__,__LINE__,(title),(message));\
+}\
+}while(0)
+#else
+#define assert_msgbox(cond,title,message)
+#endif
+
+inl void assert_break_message_box(char *file_name, char *function_name,
+                                  s32 line_number, char *title, char *message);
+
 //~ NOTE(christian): str8
-inl String_U8_Const str8_make_from_c_str(char *str, u64 char_count);
+inl String_U8_Const str8_make_from_c_str_n(char *str, u64 char_count);
+inl String_U8_Const str8_make_from_c_str(char *str);
 inl b32 str8_to_s32(String_U8_Const string, s32 *result);
 fun String_U8 str8_format_va(Memory_Arena *arena, String_U8_Const string, va_list args0);
 fun String_U8 str8_format(Memory_Arena *arena, String_U8_Const string, ...);

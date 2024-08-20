@@ -128,7 +128,7 @@ typedef union {
 } UI_RectColours;
 
 typedef struct {
-	R2D_Handle handle;
+	R_Handle handle;
 	v2f clip_p;
 	v2f clip_dims;
 } UI_ClippedTexture;
@@ -206,10 +206,11 @@ struct UI_Widget {
   // NOTE(christian): output of the autolayout algorithm.
   // NOTE(christian): used for input consumption. i.e. check if mouse in box / cache
   RectF32 rect;
-  Font_Size font_size;
+  R_Font_Size font_size;
   
   f32 corner_roundness;
   f32 edge_thickness;
+  f32 edge_smoothness;
   
   UI_RectColours border_colour;
   UI_RectColours bg_colour;
@@ -334,7 +335,8 @@ typedef struct {
   f32 elapsed_time_secs;
   
   OS_Input *input;
-  R2D_Buffer *buffer;
+  R_Buffer *buffer;
+  R_RenderPass_UI *pass;
   
   // NOTE(christian): stacks. How the heck can I automate this
   ui_define_property_stack(UI_Widget *, parent);
@@ -360,7 +362,7 @@ typedef struct {
   ui_define_property_stack(f32, padding_x);
   ui_define_property_stack(f32, padding_y);
   
-  ui_define_property_stack(Font_Size, font_size);
+  ui_define_property_stack(R_Font_Size, font_size);
   ui_define_property_stack(UI_ClippedTexture, texture);
   ui_define_property_stack(UI_IndividualSize, individual_size_x);
   ui_define_property_stack(UI_IndividualSize, individual_size_y);
@@ -378,12 +380,12 @@ inl UI_Offset ui_make_offset(UI_OffsetType type, UI_MetricType metric, f32 value
 
 // TODO(christian): the ability to set the texture size!
 inl UI_DragAndDropItem ui_make_drag_and_drop_item(UI_ClippedTexture texture, UI_DragAndDropFlags flags);
-inl UI_ClippedTexture ui_make_clipped_texture(R2D_Handle handle, v2f clip_p, v2f clip_dims);
+inl UI_ClippedTexture ui_make_clipped_texture(R_Handle handle, v2f clip_p, v2f clip_dims);
 inl UI_ClippedTexture ui_make_clipped_texture_null(void);
 inl b32 ui_clipped_texture_is_null(UI_ClippedTexture test);
 inl UI_IndividualSize ui_make_individual_size(UI_IndividualSizeType type, f32 value);
 
-inl void ui_initialize(UI_State *state, OS_Input *input, R2D_Buffer *buffer);
+inl void ui_initialize(UI_State *state, OS_Input *input, R_Buffer *buffer);
 
 #define ui_rect_colour(colour) ui_rect_colours(colour, colour, colour, colour)
 #define ui_pop_layout(state) ui_pop_parent(state)
@@ -458,7 +460,7 @@ ui_define_property_stack_function(f32, text_padding_x);
 ui_define_property_stack_function(f32, text_padding_y);
 ui_define_property_stack_function(f32, padding_x);
 ui_define_property_stack_function(f32, padding_y);
-ui_define_property_stack_function(Font_Size, font_size);
+ui_define_property_stack_function(R_Font_Size, font_size);
 ui_define_property_stack_function(UI_ClippedTexture, texture);
 ui_define_property_stack_function(UI_IndividualSize, individual_size_x);
 ui_define_property_stack_function(UI_IndividualSize, individual_size_y);
@@ -599,7 +601,7 @@ ui_pop_individual_size(UI_State *state) {
   return(result);
 }
 
-fun void ui_begin(UI_State *state, f32 elapsed_time_secs);
+fun void ui_begin(UI_State *state, f32 elapsed_time_secs, R_RenderPass_UI *ui_pass);
 fun void ui_end(UI_State *state);
 
 #endif //UI_H

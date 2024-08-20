@@ -49,11 +49,24 @@ is_negative_infinite_f32(f32 x) {
 
 //~ NOTE(christian): str8
 inl String_U8_Const
-str8_make_from_c_str(char *str, u64 char_count) {
+str8_make_from_c_str_n(char *str, u64 char_count) {
   String_U8_Const result;
   result.string = (u8 *)str;
   result.char_count = char_count;
   result.char_capacity = char_count;
+  return(result);
+}
+
+inl String_U8_Const
+str8_make_from_c_str(char *str) {
+  u64 N = 0;
+  char *current = str;
+  while (*current++) {
+    ++N;
+  }
+  
+  String_U8_Const result;
+  result = str8_make_from_c_str_n(str, N);
   return(result);
 }
 
@@ -477,4 +490,19 @@ bit_scan_forward(u64 val) {
   }
 #endif
   return(index);
+}
+
+inl void
+assert_break_message_box(char *file_name, char *function_name,
+                         s32 line_number, char *title, char *message) {
+  Memory_Arena *scratch = arena_get_scratch(null, 0);
+  Temporary_Memory temp = temp_mem_begin(scratch);
+  
+  os_message_box(str8_make_from_c_str(title),
+                 str8_format(scratch, str8("file-name: %s\n function-name: %s\n line-number: %d\n %s"),
+                             file_name, function_name, line_number,
+                             message));
+  
+  temp_mem_end(temp);
+  assert_break();
 }
