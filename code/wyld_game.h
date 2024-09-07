@@ -198,6 +198,7 @@ typedef struct {
   
   // NOTE(christian): UI stuff
   b32 open_attrib_upgrade;
+  b32 enable_lights;
   UI_Interact stat_interact;
   f32 stat_pts_t;
   f32 stat_pts_t_dir;

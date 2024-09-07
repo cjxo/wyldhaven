@@ -50,13 +50,26 @@ typedef struct {
   ID3D11Buffer *ui_quad_buffer;
   ID3D11ShaderResourceView *ui_quad_buffer_srv;
   
+  // NOTE(Christian): TestScene_Curve
+  ID3D11VertexShader *curve_vertex_shader;
+  ID3D11PixelShader *curve_pixel_shader;
+  ID3D11Buffer *curve_vertex_buffer;
+  ID3D11InputLayout *curve_vertex_buffer_input_layout;
+  u64 curve_vertex_buffer_total_bytes;
   // NOTE(christian): FONT stuff
   //R_D3D11_Texture2D font_tex;
 } R_D3D11_State;
 
-__declspec(align(16)) typedef struct {
+typedef struct {
   m44 proj;
 } R_D3D11_Constants_Main;
+
+__declspec(align(16)) typedef struct {
+  R_O2D_Light lights[r_max_lights];
+  u32 enable_lighting;
+  u32 light_count;
+  f32 _pad[2];
+} R_O2D_Light_Constants;
 
 typedef u16 R_D3D11_BufferType;
 enum {
@@ -111,7 +124,9 @@ r_d3d11_create_buffer(ID3D11Device1 *device, R_D3D11_BufferType buf_type, u64 st
 fun HRESULT
 r_d3d11_acquire_shader_handles(ID3D11Device1 *device, char *hlsl, u64 hlsl_size_in_bytes,
                                ID3D11VertexShader **vshader, ID3D11PixelShader **pshader,
-                               char *vshader_main_func_name, char *pshader_main_func_name) {
+                               char *vshader_main_func_name, char *pshader_main_func_name,
+                               ID3D11InputLayout **input_layout, D3D11_INPUT_ELEMENT_DESC *input_elements,
+                               UINT input_elements_count) {
   
   UINT hlsl_compile = D3DCOMPILE_PACK_MATRIX_COLUMN_MAJOR | D3DCOMPILE_ENABLE_STRICTNESS;
 #if defined(WC_DEBUG)
@@ -130,6 +145,13 @@ r_d3d11_acquire_shader_handles(ID3D11Device1 *device, char *hlsl, u64 hlsl_size_
   if (result == S_OK) {
     result = ID3D11Device1_CreateVertexShader(device, ID3D10Blob_GetBufferPointer(bytecode_blob),
                                               ID3D10Blob_GetBufferSize(bytecode_blob), null, vshader);
+    
+    if ((result == S_OK) && input_layout) {
+      result = ID3D11Device1_CreateInputLayout(device, input_elements, input_elements_count,
+                                               ID3D10Blob_GetBufferPointer(bytecode_blob),
+                                               ID3D10Blob_GetBufferSize(bytecode_blob),
+                                               input_layout);
+    }
     
     ID3D10Blob_Release(bytecode_blob);
     if (result == S_OK) {
@@ -155,9 +177,11 @@ r_d3d11_acquire_shader_handles(ID3D11Device1 *device, char *hlsl, u64 hlsl_size_
 fun R_Buffer *
 r_buffer_create(OS_Window *window) {
   R_Buffer *result = null;
-  Memory_Arena *arena = arena_reserve(mb(16));
+  
+  Memory_Arena *arena = arena_reserve(mb(16), Memory_Arena_Flag_CommitOrDecommitOnPushOrPop);
   result = arena_push_struct(arena, R_Buffer);
   result->arena = arena;
+  result->render_arena = arena_reserve(mb(2), Memory_Arena_Flag_CommitOrDecommitOnPushOrPop);
   result->reserved = arena_push_struct(arena, R_D3D11_State);
   result->free_texture_flag = 255;
   
@@ -470,7 +494,7 @@ r_buffer_create(OS_Window *window) {
     
     hr = r_d3d11_acquire_shader_handles(d3d11_state->main_device, ui_hlsl, sizeof(ui_hlsl),
                                         &(d3d11_state->ui_vertex_shader), &(d3d11_state->ui_pixel_shader),
-                                        "ui_vs_main", "ui_ps_main");
+                                        "ui_vs_main", "ui_ps_main", null, null, 0);
     
     assert_msgbox(hr == S_OK,
                   "r_d3d11_acquire_shader_handles Error",
@@ -481,8 +505,23 @@ r_buffer_create(OS_Window *window) {
     // NOTE(christian): Ortho2D
     char game2D_hlsl[] = 
       "#line " stringify(__LINE__) "\n"
-      "cbuffer UI_Constants : register(b0) {\n"
+      "cbuffer Main_Constants : register(b0) {\n"
       "  float4x4 ortho;\n"
+      "};\n"
+      "\n"
+      "#define max_lights 8\n"
+      "struct Light {\n"
+      "  float4 colour;\n"
+      "  float2 p;\n"
+      "  float radius;\n"
+      "  float _unused_a;\n"
+      "};\n"
+      "\n"
+      "cbuffer Light_Constants : register(b1) {\n"
+      "  Light lights[max_lights];\n"
+      "  uint enable_lighting;\n"
+      "  uint light_count;\n"
+      "  float _pad[2];"
       "};\n"
       "\n"
       "struct Game2D_Quad {\n"
@@ -491,9 +530,12 @@ r_buffer_create(OS_Window *window) {
       "  float4 vertex_colours[4];\n"
       "  float2 uvs[4];\n"
       "  uint texture_id;\n"
+      "  uint enable_lighting_for_me;\n"
       "};\n"
       "\n"
       "struct Game2D_VSQuadVert {\n"
+      "  uint enable_lighting_for_me : Enable_Lighting_For_Me;\n"
+      "  float2 world_p : World_P;\n"
       "  float4 position : SV_Position;\n"
       "  float4 colour : colour;\n"
       "  float2 center : Center;\n"
@@ -528,6 +570,8 @@ r_buffer_create(OS_Window *window) {
       "      p = quad.p + quad.dims;\n"
       "    } break;\n"
       "  }\n"
+      "  result.enable_lighting_for_me = quad.enable_lighting_for_me;\n"
+      "  result.world_p = p;\n"
       "  result.position = mul(ortho, float4(p, 0, 1));\n"
       "  result.colour = quad.vertex_colours[vid];\n"
       "  result.half_dim = quad.dims * 0.5f;\n"
@@ -555,17 +599,90 @@ r_buffer_create(OS_Window *window) {
       "	} else if (inp.texture_id == 4) {\n"
       "		sample *= linear_from_srgb(tex3.Sample(point_sampler, inp.uv));\n"
       "	}\n"
-      "  return(sample);\n"
+      "  float4 final_colour = sample;\n"
+      "  if (enable_lighting && inp.enable_lighting_for_me) {\n"
+      "    final_colour = float4(0.0f, 0.0f, 0.0f, 1.0f);"
+      "    float3 light_colour = float3(0.0f, 0.0f, 0.0f);"
+      "    for (uint light_idx = 0; light_idx < light_count; ++light_idx) {\n"
+      "      Light light = lights[light_idx];\n"
+      "      float2 to_light = light.p - inp.world_p;\n"
+      "      float distance = length(to_light);\n"
+      "      to_light /= distance;\n"
+      "      light_colour += (1.0f / (1.0f + distance * 0.05f)) * light.colour.xyz * sample.xyz;\n"
+      "    }\n"
+      "    final_colour = float4(light_colour, 1.0f);\n"
+      "    final_colour += float4(0.02f, 0.02f, 0.02f, 1.0f) * sample;"
+      "  }"
+      "  return(final_colour);\n"
       "}\n"
       ;
     
     hr = r_d3d11_acquire_shader_handles(d3d11_state->main_device, game2D_hlsl, sizeof(game2D_hlsl),
                                         &(d3d11_state->ortho2d_vertex_shader), &(d3d11_state->ortho2d_pixel_shader),
-                                        "game2D_vs_main", "game2D_ps_main");
+                                        "game2D_vs_main", "game2D_ps_main", null, null, 0);
     
     assert_msgbox(hr == S_OK,
                   "r_d3d11_acquire_shader_handles Error",
                   "Failed to compile Ortho2D shader. Please see the error message printed in the logs.");
+  }
+  
+  {
+    // NOTE(Christian): Test Scene Curve
+    char hlsl[] =
+      "cbuffer Main_Constants : register(b0) {\n"
+      "  float4x4 ortho;\n"
+      "};\n"
+      "\n"
+      "struct VS_In {\n"
+      "  float2 vert : IA_Vertex;\n"
+      "};\n"
+      "\n"
+      "struct VS_Out {\n"
+      "  float4 p : SV_Position;\n"
+      "  float4 colour : Colour;\n"
+      "};\n"
+      "\n"
+      "VS_Out\n"
+      "vs_main(VS_In vs_in) {\n"
+      "  VS_Out result = (VS_Out)0;\n"
+      "  result.p = mul(ortho, float4(vs_in.vert, 0.0f, 1.0f));\n"
+      "  result.colour = float4(1.0f, 1.0f, 1.0f, 1.0f);\n"
+      "  return(result);\n"
+      "}\n"
+      "\n"
+      "float4\n"
+      "ps_main(VS_Out ps_in) : SV_Target {\n"
+      //"  float dist = abs();"
+      "  return(ps_in.colour);\n"
+      "}\n"
+      ;
+    
+    D3D11_INPUT_ELEMENT_DESC input_element_desc[] = {
+      { "IA_Vertex", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+    };
+    
+    hr = r_d3d11_acquire_shader_handles(d3d11_state->main_device, hlsl, sizeof(hlsl),
+                                        &(d3d11_state->curve_vertex_shader), &(d3d11_state->curve_pixel_shader),
+                                        "vs_main", "ps_main", &(d3d11_state->curve_vertex_buffer_input_layout),
+                                        input_element_desc, array_count(input_element_desc));
+    assert_msgbox(hr == S_OK,
+                  "r_d3d11_acquire_shader_handles Error",
+                  "Failed to compile TestScene_Curve shader. Please see the error message printed in the logs.");
+    
+    d3d11_state->curve_vertex_buffer_total_bytes = sizeof(v2f) * 256;
+    D3D11_BUFFER_DESC dyn_vert_buf_desc = {0};
+    dyn_vert_buf_desc.ByteWidth = (UINT)(d3d11_state->curve_vertex_buffer_total_bytes);
+    dyn_vert_buf_desc.Usage = D3D11_USAGE_DYNAMIC;
+    dyn_vert_buf_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    dyn_vert_buf_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    dyn_vert_buf_desc.MiscFlags = 0;
+    dyn_vert_buf_desc.StructureByteStride = 0;
+    hr = ID3D11Device1_CreateBuffer(d3d11_state->main_device, &dyn_vert_buf_desc, null, 
+                                    &(d3d11_state->curve_vertex_buffer));
+    
+    assert_msgbox(hr == S_OK,
+                  "ID3D11Device1_CreateBuffer Error",
+                  "Failed to create TestScene_Curve Dynamic Vertex Buffer");
   }
   
   // NOTE(christian): Setup raster
@@ -657,15 +774,24 @@ r_buffer_create(OS_Window *window) {
   }
   
   {
-    // NOTE(christian): CONST BUFFS UI
+    // NOTE(christian): MAIN CONSTNAT BUFEFER
     hr = r_d3d11_create_buffer(d3d11_state->main_device, R_D3D11_BufferType_Constant,
                                1, sizeof(R_D3D11_Constants_Main),
                                &(d3d11_state->main_constant_buffer),
                                null);
     
     assert_msgbox(hr == S_OK,
-                  "r_d3d11_create_buffer_structured Error",
-                  "Failed to create Structured Buffer for UI.");
+                  "r_d3d11_create_buffer Error",
+                  "Failed to create Main Constant Buffer");
+    
+    // NOTE(Christian): CONST BUFF ORTHO2D LIGHT
+    hr = r_d3d11_create_buffer(d3d11_state->main_device, R_D3D11_BufferType_Constant,
+                               1, sizeof(R_O2D_Light_Constants),
+                               &(d3d11_state->ortho2d_light_constant_buffer), null);
+    
+    assert_msgbox(hr == S_OK,
+                  "r_d3d11_create_buffer Error",
+                  "Failed to create Light Constant Buffer for O2D");
   }
   
   {
@@ -945,6 +1071,14 @@ r_submit_passes_to_gpu(R_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f3
         }
         
         // TODO(christian): MAP LIGHTS
+        if (ID3D11DeviceContext_Map(state->base_device_context, (ID3D11Resource *)state->ortho2d_light_constant_buffer, 0,
+                                    D3D11_MAP_WRITE_DISCARD, 0, &mapped_subresource) == S_OK) {
+          R_O2D_Light_Constants *light_consts = (R_O2D_Light_Constants *)mapped_subresource.pData;
+          copy_memory(light_consts->lights, ortho2D->lights, sizeof(R_O2D_Light) * ortho2D->light_count);
+          light_consts->enable_lighting = ortho2D->enable_lighting;
+          light_consts->light_count = (u32)ortho2D->light_count;
+          ID3D11DeviceContext_Unmap(state->base_device_context, (ID3D11Resource *)state->ortho2d_light_constant_buffer, 0);
+        }
         
         // NOTE(christian): rects drawn by game
         if (ID3D11DeviceContext_Map(state->base_device_context, (ID3D11Resource *)state->ortho2d_quad_buffer, 0,
@@ -980,7 +1114,7 @@ r_submit_passes_to_gpu(R_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f3
           }
           
           ID3D11DeviceContext_PSSetSamplers(state->base_device_context, 0, 1, &state->texture_sampler);
-          //ID3D11DeviceContext_PSSetConstantBuffers(state->base_device_context, 1, 1, &state->ortho2d_light_constant_buffer);
+          ID3D11DeviceContext_PSSetConstantBuffers(state->base_device_context, 1, 1, &state->ortho2d_light_constant_buffer);
           ID3D11DeviceContext_PSSetShader(state->base_device_context, state->ortho2d_pixel_shader, null, 0);
         }
         
@@ -1057,6 +1191,108 @@ r_submit_passes_to_gpu(R_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f3
         
       } break;
       
+      case R_RenderPassType_TestScene_Curve: {
+        //r_curve_generate_points(pass);
+        R_RenderPass_TestScene_Curve *curve_pass = &(pass->curve);
+        D3D11_MAPPED_SUBRESOURCE mapped_subresource;
+        
+        {
+          if (ID3D11DeviceContext_Map(state->base_device_context, (ID3D11Resource *)state->main_constant_buffer, 0,
+                                      D3D11_MAP_WRITE_DISCARD, 0, &mapped_subresource) == S_OK) {
+            m44 ortho = m44_make_ortho_lh_z01(0.0f, viewport.Width, 0.0f, viewport.Height, 0.0f, 1.0f);
+            *(m44 *)mapped_subresource.pData = ortho;
+            
+            ID3D11DeviceContext_Unmap(state->base_device_context, (ID3D11Resource *)state->main_constant_buffer, 0);
+          }
+        }
+        
+        {
+          ID3D11DeviceContext_IASetPrimitiveTopology(state->base_device_context, D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP);
+          ID3D11DeviceContext_IASetInputLayout(state->base_device_context, state->curve_vertex_buffer_input_layout);
+          UINT strides = sizeof(v2f);
+          UINT offsets = 0;
+          ID3D11DeviceContext_IASetVertexBuffers(state->base_device_context, 0, 1,
+                                                 &(state->curve_vertex_buffer),
+                                                 &strides, &offsets);
+        }
+        
+        {
+          ID3D11DeviceContext_VSSetConstantBuffers(state->base_device_context, 0, 1, &(state->main_constant_buffer));
+          ID3D11DeviceContext_VSSetShader(state->base_device_context, state->curve_vertex_shader, null, 0);
+        }
+        
+        {
+          ID3D11DeviceContext_RSSetState(state->base_device_context, (ID3D11RasterizerState *)state->rasterizer_state);
+          ID3D11DeviceContext_RSSetViewports(state->base_device_context, 1, &viewport);
+        }
+        
+        {
+          ID3D11DeviceContext_PSSetShader(state->base_device_context, state->curve_pixel_shader, null, 0);
+        }
+        
+        {
+          ID3D11DeviceContext_OMSetRenderTargets(state->base_device_context, 1, &(state->render_target_view), null);
+          ID3D11DeviceContext_OMSetBlendState(state->base_device_context, (ID3D11BlendState *)state->blend_state, null, 0xFFFFFFFF);
+        }
+        
+        {
+          u64 curve_to_render_idx = 0;
+          u64 curve_idx = 0;
+          while (1) {
+            HRESULT map_result = ID3D11DeviceContext_Map(state->base_device_context, (ID3D11Resource *)state->curve_vertex_buffer, 0,
+                                                         D3D11_MAP_WRITE_DISCARD, 0, &mapped_subresource);
+            assert_true(map_result == S_OK);
+            
+            u8 *curve_pts_ = (mapped_subresource.pData);
+            
+            for (u64 point_group_byte_idx = 0;
+                 (point_group_byte_idx < state->curve_vertex_buffer_total_bytes) &&
+                 (curve_idx < curve_pass->curve_count);
+                 ++curve_idx) {
+              R_Curve *curve = curve_pass->curves + curve_idx;
+              f32 curve_count_m_1 = (f32)(curve->capacity - 1);
+              for (u64 sample_idx = 0;
+                   sample_idx < curve->capacity;
+                   ++sample_idx) {
+                f32 t = (f32)sample_idx / (f32)curve_count_m_1;
+                
+                switch (curve->type) {
+                  case R_CurveType_Hermite: {
+                    curve->points[sample_idx] = herm_point(&(curve->hermite), t);
+                  } break;
+                  
+                  case R_CurveType_Bezier: {
+                    curve->points[sample_idx] = bezier_point(&(curve->bezier), t);
+                  } break;
+                  
+                  default: {
+                    invalid_code_path();
+                  } break;
+                }
+              }
+              
+              copy_memory(curve_pts_ + point_group_byte_idx, curve->points, sizeof(v2f) * curve->capacity);
+              point_group_byte_idx += sizeof(v2f) * curve->capacity;
+            }
+            
+            ID3D11DeviceContext_Unmap(state->base_device_context, (ID3D11Resource *)state->curve_vertex_buffer, 0);
+            
+            for (UINT v_buffer_idx = 0;
+                 curve_to_render_idx < curve_idx;
+                 ++curve_to_render_idx) {
+              R_Curve *curve = curve_pass->curves + curve_to_render_idx;
+              ID3D11DeviceContext_Draw(state->base_device_context, (UINT)curve->capacity, v_buffer_idx);
+              v_buffer_idx += (UINT)curve->capacity;
+            }
+            
+            if (curve_idx >= curve_pass->curve_count) {
+              break;
+            }
+          }
+        }
+        
+      } break;
+      
       default: {
         invalid_code_path();
       } break;
@@ -1067,4 +1303,6 @@ r_submit_passes_to_gpu(R_Buffer *buffer, b32 vsync, f32 clear_r, f32 clear_g, f3
   
   buffer->first_pass = buffer->last_pass = null;
   IDXGISwapChain1_Present(state->dxgi_swap_chain, vsync == true, 0);
+  
+  arena_clear(buffer->render_arena);
 }

@@ -53,11 +53,27 @@ typedef union {
 
 typedef union {
   struct {
+    v4f r0, r1;
+  };
+  v4f rows[2];
+  f32 m[2][4];
+} m24;
+
+typedef union {
+  struct {
     v4f r0, r1, r2, r3;
   };
   v4f rows[4];
   f32 m[4][4];
 } m44;
+
+typedef struct {
+  m24 mat;
+} Hermite_Curve;
+
+typedef struct {
+  m24 mat;
+} Bezier_Curve;
 
 typedef struct {
   v2f p;
@@ -114,6 +130,10 @@ inl v2i v2i_max(v2i a, v2i b);
 inl v2f v2f_min(v2f a, v2f b);
 inl v2f v2f_max(v2f a, v2f b);
 inl v2f v2f_lerp(v2f origin, v2f dest, f32 t);
+inl void v2f_add_eq(v2f *a, v2f b);
+
+inl RectF32 rectf32_make(v2f p, v2f dims);
+fun b32 point_in_rect(v2f *p, RectF32 *rect);
 
 //~ NOTE(christian): rects32
 inl RectS32 r32_make(v2i p, v2i dims);
@@ -133,6 +153,10 @@ inl v4f v4f_make(f32 x, f32 y, f32 z, f32 w);
 // alpha => [0, 1] norm percent
 inl v4f rgba_from_hsva(f32 hue, f32 saturation, f32 value, f32 alpha);
 
+//~ NOTE(Christian): m24s
+inl m24 m24_mul_m44(m24 *a, m44 *b);
+inl v2f m24_mul_v4(m24 *a, v4f b);
+
 //~ NOTE(christian): m44s
 inl m44 m44_make_ortho_lh_z01(f32 left, f32 right, f32 top, f32 bottom, f32 near_plane, f32 far_plane);
 inl v4f m44_mul_vec4(m44 *m, v4f v);
@@ -141,4 +165,12 @@ inl v4f m44_mul_vec4(m44 *m, v4f v);
 inl f32 ease_out_quart(f32 t);
 inl f32 ease_in_quart(f32 t);
 inl f32 ease_in_quad(f32 t);
+
+//~ NOTE(Christian): Hermite
+inl Hermite_Curve herm_make(v2f start, v2f end, v2f start_tangent, v2f end_tangent);
+inl v2f herm_point(Hermite_Curve *curve, f32 t);
+
+//~ NOTE(Christian): bezier
+inl Bezier_Curve bezier_make(v2f P_1, v2f P_2, v2f P_3, v2f P_4);
+inl v2f bezier_point(Bezier_Curve *curve, f32 t);
 #endif //WYLD_MATH_H

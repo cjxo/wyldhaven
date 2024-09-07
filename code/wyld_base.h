@@ -108,11 +108,21 @@ typedef struct {
 
 typedef String_U8_Const String_U8;
 
+typedef u64 Memory_Arena_Flag;
+enum {
+  // TODO(Christian): implement growing arena
+  Memory_Arena_Flag_AutoResizing = 0x1,
+  Memory_Arena_Flag_CommitOrDecommitOnPushOrPop = 0x2,
+};
 typedef struct {
   u8 *memory;
   u64 commit_ptr;
   u64 stack_ptr;
   u64 capacity;
+  
+  Memory_Arena_Flag flags;
+  
+  u64 bruhhhhhhhhh;
 } Memory_Arena;
 
 typedef struct {
@@ -157,7 +167,10 @@ fun String_U8_Const str8_make_null(void);
 //~ NOTE(christian): mem
 #define arena_push_array(arena,type,count) (type *)arena_push(arena,sizeof(type)*(count))
 #define arena_push_struct(arena,type) arena_push_array(arena,type,1)
-fun Memory_Arena *arena_reserve(u64 size_in_bytes);
+fun Memory_Arena *arena_reserve(u64 size_in_bytes, Memory_Arena_Flag flags);
+fun void arena_partition_from_memory_block(void *source_block, u64 block_size,
+                                           Memory_Arena **arenas_to_fill, u64 arena_count,
+                                           u64 *partition_influence_values);
 inl void arena_clear(Memory_Arena *arena);
 fun void *arena_push(Memory_Arena *arena, u64 push_size);
 fun b32 arena_pop(Memory_Arena *arena, u64 pop_size);

@@ -263,23 +263,81 @@ str8_is_null(String_U8_Const str) {
 
 //~ NOTE(christian): mem
 fun Memory_Arena *
-arena_reserve(u64 size_in_bytes) {
+arena_reserve(u64 size_in_bytes, Memory_Arena_Flag flags) {
   Memory_Arena *result = null;
   
   void *block = os_mem_reserve(size_in_bytes);
   if (block) {
-    u64 initial_commit = align_a_to_b(sizeof(Memory_Arena), 8);
-    if (os_mem_commit(block, initial_commit)) {
-      result = (Memory_Arena *)(block);
-      result->memory = (u8 *)(block);
-      result->commit_ptr = initial_commit;
-      result->stack_ptr = initial_commit;
-      result->capacity = size_in_bytes;
+    u64 initial_commit = 0;
+    if (flags & Memory_Arena_Flag_CommitOrDecommitOnPushOrPop) {
+      initial_commit = align_a_to_b(sizeof(Memory_Arena), 16);
+    } else {
+      initial_commit = size_in_bytes;
     }
+    
+    b32 commit_success = os_mem_commit(block, initial_commit);
+    assert_true(commit_success == true);
+    
+    result = (Memory_Arena *)(block);
+    result->memory = (u8 *)(block);
+    result->commit_ptr = initial_commit;
+    result->stack_ptr = initial_commit;
+    result->capacity = size_in_bytes;
+    result->flags = flags;
   }
   
   return(result);
 }
+
+// NOTE(Christian): How does partition_influence_values work?
+// First suppose that we have three arenas. Also, suppose that
+// partition_influence_values's values are all 1. Then, the block_size
+// will be partitioned equally to three arenas. That is, the first, second, third arena
+// will get 1 / 3 of the block_size, where the numerator 1 is from partition_influence_values,
+// and the denominator is the sum of all values in partition_influence_values.
+
+// Now suppose that partition_influence_values is not all ones, and all are greater or equal to one.
+// In particular, suppose partition_influence_values = (2, 1, 1). Then, first arena will get
+// 2 / 4 of the block_size, the second and third arena will get 1 / 4 of the block_size.
+
+// In general, let n = sum(partition_influence_values). Let n_i > 0 be the influence value
+// of the block_Size for the ith arena. Also, let f_i fraction for the ith arena: n_i / n. Then,
+// f_1 = n_1 / n, f_2 = n_2 / n, f_3 = n_3 / n, ..., f_n = n_n / n.
+
+#if 0
+// TODO(Christian): I dont think i will use this. Remove it.
+fun void
+arena_partition_from_memory_block(void *source_block, u64 block_size,
+                                  Memory_Arena **arenas_to_fill, u64 arena_count,
+                                  u64 *partition_influence_values) {
+#if defined(WC_DEBUG)
+  assert_true(source_block != null);
+  assert_true(((block_size - 1) & block_size) == 0);
+  for (u64 arena_index = 0; arena_index < arena_count; ++arena_index) {
+    assert_true(arenas_to_fill[arena_index] != null);
+    assert_true(partition_influence_values[arena_index] > 0);
+  }
+#endif
+  u64 total_influence_count = 0;
+  for (u64 arena_index = 0; arena_index < arena_count; ++arena_index) {
+    total_influence_count += partition_influence_values[arena_index];
+  }
+  
+  u64 arena_size_accum = 0;
+  for (u64 arena_index = 0; arena_index < arena_count; ++arena_index) {
+    u64 arena_size = (partition_influence_values[arena_index] * block_size) / total_influence_count;
+    arenas_to_fill[arena_index] = (Memory_Arena *)((u8 *)source_block + arena_size_accum);
+    arenas_to_fill[arena_index]->stack_ptr = sizeof(Memory_Arena);
+    arenas_to_fill[arena_index]->commit_ptr = sizeof(Memory_Arena);
+    arenas_to_fill[arena_index]->memory = (u8 *)(arenas_to_fill[arena_index]);
+    arenas_to_fill[arena_index]->capacity = arena_size;
+    arenas_to_fill[arena_index]->flags = 0;
+    arena_size_accum += arena_size;
+  }
+  
+  assert_true(arena_size_accum == block_size);
+}
+#endif
 
 inl void
 arena_clear(Memory_Arena *arena) {
@@ -293,28 +351,34 @@ fun void *
 arena_push(Memory_Arena *arena, u64 push_size) {
   void *result = null;
   
-  push_size = align_a_to_b(push_size, 8);
+  push_size = align_a_to_b(push_size, 16);
   u64 desired_stack_ptr = arena->stack_ptr + push_size;
   if (desired_stack_ptr <= arena->capacity) {
-    void *result_block_on_success = arena->memory + arena->stack_ptr;
-    
-    u64 desired_commit_ptr = arena->commit_ptr;
-    if (desired_stack_ptr >= arena->commit_ptr) {
-      u64 new_commit_ptr = align_a_to_b(desired_stack_ptr, kb(128));
-      u64 clamped_commit_ptr = minimum(new_commit_ptr, arena->capacity);
+    if (arena->flags & Memory_Arena_Flag_CommitOrDecommitOnPushOrPop) {
       
-      if (clamped_commit_ptr > arena->commit_ptr) {
-        if (os_mem_commit(arena->memory + arena->commit_ptr,
-                          clamped_commit_ptr - arena->commit_ptr)) {
-          desired_commit_ptr = clamped_commit_ptr;
+      void *result_block_on_success = arena->memory + arena->stack_ptr;
+      
+      u64 desired_commit_ptr = arena->commit_ptr;
+      if (desired_stack_ptr >= arena->commit_ptr) {
+        u64 new_commit_ptr = align_a_to_b(desired_stack_ptr, kb(128));
+        u64 clamped_commit_ptr = minimum(new_commit_ptr, arena->capacity);
+        
+        if (clamped_commit_ptr > arena->commit_ptr) {
+          if (os_mem_commit(arena->memory + arena->commit_ptr,
+                            clamped_commit_ptr - arena->commit_ptr)) {
+            desired_commit_ptr = clamped_commit_ptr;
+          }
         }
       }
-    }
-    
-    if (desired_commit_ptr > arena->stack_ptr) {
+      
+      if (desired_commit_ptr > arena->stack_ptr) {
+        arena->stack_ptr = desired_stack_ptr;
+        arena->commit_ptr = desired_commit_ptr;
+        result = result_block_on_success;
+      }
+    } else {
+      result = arena->memory + arena->stack_ptr;
       arena->stack_ptr = desired_stack_ptr;
-      arena->commit_ptr = desired_commit_ptr;
-      result = result_block_on_success;
     }
   }
   
@@ -324,16 +388,18 @@ arena_push(Memory_Arena *arena, u64 push_size) {
 fun b32
 arena_pop(Memory_Arena *arena, u64 pop_size) {
   b32 result = false;
-  pop_size = align_a_to_b(pop_size, 8);
-  if (pop_size <= (arena->stack_ptr + align_a_to_b(sizeof(Memory_Arena), 8))) {
+  pop_size = align_a_to_b(pop_size, 16);
+  if (pop_size <= (arena->stack_ptr + align_a_to_b(sizeof(Memory_Arena), 16))) {
     arena->stack_ptr -= pop_size;
-    u64 desired_commit_ptr = align_a_to_b(arena->stack_ptr, kb(128));
-    
-    if (desired_commit_ptr < arena->commit_ptr) {
-      if (os_mem_decommit(arena->memory + desired_commit_ptr,
-                          arena->commit_ptr - desired_commit_ptr)) {
-        arena->commit_ptr = desired_commit_ptr;
-        result = true;
+    if (arena->flags & Memory_Arena_Flag_CommitOrDecommitOnPushOrPop) {
+      u64 desired_commit_ptr = align_a_to_b(arena->stack_ptr, kb(128));
+      
+      if (desired_commit_ptr < arena->commit_ptr) {
+        if (os_mem_decommit(arena->memory + desired_commit_ptr,
+                            arena->commit_ptr - desired_commit_ptr)) {
+          arena->commit_ptr = desired_commit_ptr;
+          result = true;
+        }
       }
     }
   }
@@ -359,6 +425,7 @@ temp_mem_end(Temporary_Memory temp) {
 
 #define scratch_per_thread 4
 thread_var glb Memory_Arena *scratch_array[scratch_per_thread] = { null };
+thread_var glb Memory_Arena *frame_arena = null;
 
 inl Memory_Arena *
 arena_get_scratch(Memory_Arena **conflict, u64 conflict_count) {
@@ -366,7 +433,7 @@ arena_get_scratch(Memory_Arena **conflict, u64 conflict_count) {
     for (u32 arena_index = 0;
          arena_index < scratch_per_thread;
          arena_index += 1) {
-      scratch_array[arena_index] = arena_reserve(mb(2));
+      scratch_array[arena_index] = arena_reserve(mb(2), Memory_Arena_Flag_CommitOrDecommitOnPushOrPop);
     }
   }
   

@@ -189,8 +189,8 @@ ui_text(UI_State *state, R_Font_Size font_size, v2f p, v4f colour, String_U8_Con
 inl void
 ui_initialize(UI_State *state, OS_Input *input, R_Buffer *buffer) {
   clear_struct(state);
-  state->widget_arena = arena_reserve(align_a_to_b(1024 * sizeof(UI_Widget), 4096));
-  state->util_arena = arena_reserve(kb(32));
+  state->widget_arena = arena_reserve(align_a_to_b(1024 * sizeof(UI_Widget), 4096), Memory_Arena_Flag_CommitOrDecommitOnPushOrPop);
+  state->util_arena = arena_reserve(kb(32), Memory_Arena_Flag_CommitOrDecommitOnPushOrPop);
   state->buffer = buffer;
   state->input = input;
 }

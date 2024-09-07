@@ -57,6 +57,25 @@ r_begin_pass(R_Buffer *buffer, R_RenderPassType type) {
   return(result);
 }
 
+fun R_RenderPass *
+r_begin_pass_curve(R_Buffer *buffer, u64 curve_count, u64 step_count) {
+  R_RenderPass *result = r_begin_pass(buffer, R_RenderPassType_TestScene_Curve);
+  R_RenderPass_TestScene_Curve *curve = &(result->curve);
+  curve->curves = arena_push_array(buffer->render_arena, R_Curve, curve_count);
+  
+  for (u64 curve_idx = 0;
+       curve_idx < curve_count;
+       ++curve_idx) {
+    curve->curves[curve_idx].points = arena_push_array(buffer->render_arena, v2f, step_count);
+    curve->curves[curve_idx].capacity = step_count;
+  }
+  
+  curve->curve_capacity = curve_count;
+  curve->curve_count = 0;
+  
+  return(result);
+}
+
 inl void
 r_uvs_from_clip(v2f clip_p, v2f clip_dims, R_Handle texture_handle, v2f uvs[4]) {
   s32 width, height;
@@ -107,7 +126,6 @@ r_O2D_acquire_rect(R_RenderPass *pass) {
   
   assert_true(pass->game_ortho_2D.rect_count < array_count(pass->game_ortho_2D.rects));
   R_O2D_Rect *rect = pass->game_ortho_2D.rects + pass->game_ortho_2D.rect_count++;
-  clear_memory(rect, sizeof(R_O2D_Rect));
   return(rect);
 }
 
@@ -143,3 +161,62 @@ r_O2D_texture(R_RenderPass *pass, R_Handle texture_handle, v2f p, v2f dims, v4f 
   rect->texture_id = (u32)texture_handle.h64[0];
   return(rect);
 }
+
+fun R_O2D_Light *
+r_O2D_light_add(R_RenderPass *pass, v2f p, f32 radius, v4f colour) {
+  assert_true(pass->type == R_RenderPassType_Game_Ortho2D);
+  
+  R_RenderPass_Game_Ortho2D *o2d = &(pass->game_ortho_2D);
+  assert_true(o2d->light_count < array_count(o2d->lights));
+  R_O2D_Light *result = o2d->lights + o2d->light_count++;
+  result->p = p;
+  result->radius = radius;
+  result->colour = colour;
+  return(result);
+}
+
+fun R_Curve *
+r_curve_add(R_RenderPass *curve_pass, R_CurveType type, v2f P_1, v2f P_2, v2f P_3, v2f P_4) {
+  assert_true(curve_pass->type == R_RenderPassType_TestScene_Curve);
+  R_RenderPass_TestScene_Curve *curve = &(curve_pass->curve);
+  assert_true(curve->curve_count < curve->curve_capacity);
+  
+  R_Curve *result = curve->curves + curve->curve_count++;
+  switch (type) {
+    case R_CurveType_Hermite: {
+      result->hermite = herm_make(P_1, P_2, P_3, P_4);
+    } break;
+    
+    case R_CurveType_Bezier: {
+      result->bezier = bezier_make(P_1, P_2, P_3, P_4);
+    } break;
+    
+    default: {
+      invalid_code_path();
+    } break;
+  }
+  return(result);
+}
+
+#if 0
+// TODO(Christian): should this be internal to D3d11/ogl?
+fun void
+r_curve_generate_points(R_RenderPass *curve_pass) {
+  assert_true(curve_pass->type == R_RenderPassType_TestScene_Curve);
+  R_RenderPass_TestScene_Curve *curve = &(curve_pass->curve);
+  
+  for (u64 curve_idx = 0;
+       curve_idx < curve->curve_count;
+       ++curve_idx) {
+    R_CurvePoints *curve_pts = curve->curves + curve_idx;
+    Hermite_Curve *hermite_curve = curve->hermite_curves + curve_idx;
+    f32 curve_count_m_1 = (f32)(array_count(curve_pts->points) - 1);
+    for (u64 sample_idx = 0;
+         sample_idx < array_count(curve_pts->points);
+         ++sample_idx) {
+      f32 t = (f32)sample_idx / (f32)curve_count_m_1;
+      curve_pts->points[sample_idx] = herm_point(hermite_curve, t);
+    }
+  }
+}
+#endif

@@ -393,7 +393,10 @@ draw_dun_tile(Game_State *game_state, R_RenderPass *game_pass, v2f p, v2f dims, 
     } break;
   }
   
-  r_O2D_texture_clipped(game_pass, game_state->sprite_sheet, p, dims, clip_p, clip_dim, rgba_make(1, 1, 1, 1));
+  R_O2D_Rect *rect = r_O2D_texture_clipped(game_pass, game_state->sprite_sheet, p, dims, clip_p, clip_dim, rgba_make(1, 1, 1, 1));
+  if (tile->flags & DunTileFlag_Illuminated) {
+    rect->enable_lighting_for_me = true;
+  }
   //r_O2D_rect_filled(game_pass, p, dims, rgba_make(1, 1, 0, 1));
   //draw_sprite(game_state, p, dims, dun_tile_type); // for now it directly maps to Sprite_TYpe;
 }
@@ -466,6 +469,8 @@ dun_cast_light_octant(Dungeon_Tile *level_tiles, s32 level_width, s32 level_heig
         if (((delta_x * delta_x) + (delta_y * delta_y)) <= radius_sq) {
           current_tile->flags |= illumination_flag;
           current_tile->flags &= ~DunTileFlag_IsNotDiscoveredByPlayer;
+          
+          //(1.0f / radius_sq)
         }
         
         if (previous_block_is_opaque) {
@@ -1237,8 +1242,9 @@ game_ui_player_info(Game_State *game_state, OS_Input *input) {
 fun void
 game_update_and_render(Game_State *game_state, OS_Input *input,
                        R_Buffer *buffer, f32 dt_step) {
-  R_RenderPass *game_pass = r_begin_pass(buffer, R_RenderPassType_Game_Ortho2D);
   prof_begin_timed_block();
+  R_RenderPass *game_pass = r_begin_pass(buffer, R_RenderPassType_Game_Ortho2D);
+  game_pass->game_ortho_2D.enable_lighting = game_state->enable_lights;
   v2i player_request_walk = { 0 };
   if (os_key_pressed(input, OSInputKey_W)) {
     player_request_walk.y -= 32;
@@ -1334,6 +1340,7 @@ game_update_and_render(Game_State *game_state, OS_Input *input,
   //render_begin_y = (viewport_height - map_dims_pix.y) * 0.5f;
   
   v2f player_screen_p = v2f_add(cam2d_world_to_screen(camera, player->p), v2f_make(16.0f, 16.0f));
+  r_O2D_light_add(game_pass, player_screen_p, 8.0f * 32.0f, v4f_make(1.0f, 1.0f, 1.0f, 1.0f));
   
   for (s32 tile_y = render_begin.y; tile_y < render_end.y; tile_y += 1) {
     for (s32 tile_x = render_begin.x; tile_x < (render_end.x); tile_x += 1) {
@@ -1413,6 +1420,7 @@ game_update_and_render(Game_State *game_state, OS_Input *input,
           ui_do_labelf(ui_state, str8("UI widget util allocs: %llu"), ui_state->util_arena->stack_ptr);
           ui_do_labelf(ui_state, str8("Player Current level: %llu"), game_state->player_current_level);
           if (ui_do_button(ui_state, str8("Toggle Lights: TODO IMPLEMENT")).released) {
+            game_state->enable_lights = !game_state->enable_lights;
             //r2d_buffer->light_constants.enable_lights[0] = !r2d_buffer->light_constants.enable_lights[0];
           }
           
@@ -1505,7 +1513,21 @@ test_audio_callback(u32 buffer_sz_bytes, u8 *buffer_ptr, void *user_data) {
   }
 }
 
+typedef struct {
+  v2f control_pts[4];
+  R_CurveType type;
+} Curve_Instance;
 
+inl Curve_Instance
+curve_create(R_CurveType type, v2f a, v2f b, v2f c, v2f d) {
+  Curve_Instance result;
+  result.control_pts[0] = a;
+  result.control_pts[1] = b;
+  result.control_pts[2] = c;
+  result.control_pts[3] = d;
+  result.type = type;
+  return(result);
+}
 
 int __stdcall
 WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdShow) {
@@ -1523,12 +1545,25 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
     f64 target_seconds_per_frame = 1.0 / (f64)frames_per_second;
     f32 game_update_seconds = (f32)target_seconds_per_frame;
     
-#if 0
+#if 1
+    
+    
     R_Buffer *buffer = r_buffer_create(window);
     UI_State ui_state;
     ui_initialize(&ui_state, &window->input, null);
     b32 is_running = true;
     u64 ticks_begin_for_work = os_get_ticks();
+    
+    v2f mouse_delta = v2f_make(0, 0);
+    Curve_Instance curve_instances[] = {
+      curve_create(R_CurveType_Hermite, v2f_make(50, 50), v2f_make(500, 500),
+                   v2f_make(25.0f, 100.0f), v2f_make(25.0f, -50.0f)),
+      curve_create(R_CurveType_Bezier, v2f_make(300, 50), v2f_make(600, 50),
+                   v2f_make(300, 100.0f), v2f_make(600, 100)),
+    };
+    
+    u64 curve_current_drag = invalid_index_u64;
+    u64 control_pt_current_drag = invalid_index_u64;
     
     r_viewport_set_dims(buffer, 1280, 720);
     while (is_running) {
@@ -1538,6 +1573,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
         is_running = false;
       }
       
+#if 0
       R_RenderPass *game_pass = r_begin_pass(buffer, R_RenderPassType_Game_Ortho2D);
       r_O2D_rect_filled(game_pass, v2f_make(300, 300), v2f_make(50, 50), v4f_make(1.0f, 0.0f, 0.0f, 1.0));
       r_O2D_rect_filled(game_pass, v2f_make(300, 275), v2f_make(50, 50), v4f_make(0.0f, 1.0f, 0.0f, 1.0));
@@ -1556,6 +1592,105 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
               100.0f, 40.0f);
       
       ui_text(&ui_state, R_FontSize_Small, v2f_make(0, 400), v4f_make(0, 0, 1, 1), str8("hello world"));
+#endif
+      v2f mouse_p = os_get_mouse_v2f(&window->input);
+      if (os_mouse_held(&window->input, OSInputMouse_Left) && (control_pt_current_drag == invalid_index_u64)) {
+        for (u64 curve_instance_idx = 0;
+             curve_instance_idx < array_count(curve_instances);
+             ++curve_instance_idx) {
+          b32 found_drag = false;
+          Curve_Instance *instance = curve_instances + curve_instance_idx;
+          v2f *control_pts = instance->control_pts;
+          for (u64 control_pt_idx = 0;
+               control_pt_idx < 4;
+               ++control_pt_idx) {
+            RectF32 rect;
+            switch (instance->type) {
+              case R_CurveType_Hermite: {
+                if (control_pt_idx < 2) {
+                  rect = rectf32_make(control_pts[control_pt_idx], v2f_make(10, 10));
+                } else {
+                  rect = rectf32_make(v2f_add(control_pts[control_pt_idx - 2], control_pts[control_pt_idx]), v2f_make(10, 10));
+                }
+              } break;
+              
+              case R_CurveType_Bezier: {
+                rect = rectf32_make(control_pts[control_pt_idx], v2f_make(10, 10));
+              } break;
+            }
+            
+            if (point_in_rect(&mouse_p, &rect)) {
+              curve_current_drag = curve_instance_idx;
+              control_pt_current_drag = control_pt_idx;
+              mouse_delta = v2f_sub(mouse_p, rect.p);
+              found_drag = true;
+              break;
+            }
+          }
+          
+          if (found_drag) {
+            break;
+          }
+        }
+      } else if (os_mouse_released(&window->input, OSInputMouse_Left)) {
+        curve_current_drag = invalid_index_u64;
+        control_pt_current_drag = invalid_index_u64;
+      }
+      
+      if (curve_current_drag != invalid_index_u64) {
+        switch (curve_instances[curve_current_drag].type) {
+          case R_CurveType_Hermite: {
+            if (control_pt_current_drag < 2) {
+              curve_instances[curve_current_drag].control_pts[control_pt_current_drag] = v2f_sub(mouse_p, mouse_delta);
+            } else if (control_pt_current_drag < 4) {
+              curve_instances[curve_current_drag].control_pts[control_pt_current_drag] = v2f_sub(v2f_sub(mouse_p, curve_instances[curve_current_drag].control_pts[control_pt_current_drag - 2]), mouse_delta);
+            }
+          } break;
+          
+          case R_CurveType_Bezier: {
+            curve_instances[curve_current_drag].control_pts[control_pt_current_drag] = v2f_sub(mouse_p, mouse_delta);
+          } break;
+        }
+      }
+      
+      R_RenderPass *curve_pass = r_begin_pass_curve(buffer, array_count(curve_instances), 32);
+      R_RenderPass *game_pass = r_begin_pass(buffer, R_RenderPassType_Game_Ortho2D);
+      
+      for (u64 curve_instance_idx = 0;
+           curve_instance_idx < array_count(curve_instances);
+           ++curve_instance_idx) {
+        Curve_Instance *instance = curve_instances + curve_instance_idx;
+        v2f *control_pts = instance->control_pts;
+        
+        switch (instance->type) {
+          case R_CurveType_Hermite: {
+            r_curve_add(curve_pass, instance->type, control_pts[0], control_pts[1],
+                        v2f_scale(control_pts[2], 2.0f),
+                        v2f_scale(control_pts[3], 2.0f));
+            
+            r_O2D_rect_filled(game_pass, control_pts[0], v2f_make(10, 10), v4f_make(1, 1, 1, 1));
+            r_O2D_rect_filled(game_pass, control_pts[1], v2f_make(10, 10), v4f_make(1, 1, 1, 1));
+            r_O2D_rect_filled(game_pass, v2f_add(control_pts[0], control_pts[2]), v2f_make(10, 10), v4f_make(0, 0, 1, 1));
+            r_O2D_rect_filled(game_pass, v2f_add(control_pts[1], control_pts[3]), v2f_make(10, 10), v4f_make(0, 0, 1, 1));
+          } break;
+          
+          case R_CurveType_Bezier: {
+            r_curve_add(curve_pass, instance->type, control_pts[0], control_pts[1],
+                        control_pts[2],
+                        control_pts[3]);
+            
+            r_O2D_rect_filled(game_pass, control_pts[0], v2f_make(10, 10), v4f_make(0, 1, 0, 1));
+            r_O2D_rect_filled(game_pass, control_pts[1], v2f_make(10, 10), v4f_make(0, 1, 0, 1));
+            r_O2D_rect_filled(game_pass, control_pts[2], v2f_make(10, 10), v4f_make(0, 1, 0, 1));
+            r_O2D_rect_filled(game_pass, control_pts[3], v2f_make(10, 10), v4f_make(0, 1, 0, 1));
+          } break;
+          
+          default: {
+            invalid_code_path();
+          } break;
+        }
+        
+      }
       
       r_submit_passes_to_gpu(buffer, true, 0, 0, 0, 1);
       
@@ -1573,7 +1708,8 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
     r_viewport_set_dims(r_buffer, 1280, 720);
     
     Game_State game_state = { 0 };
-    game_state.main_arena = arena_reserve(mb(16));
+    game_state.main_arena = arena_reserve(mb(16), Memory_Arena_Flag_CommitOrDecommitOnPushOrPop);
+    game_state.enable_lights = true;
     
     ui_initialize(&(game_state.ui_state), &window->input, r_buffer);
     game_state.sprite_sheet = r_texture_from_file(r_buffer, str8("..\\data\\assets\\texture\\tiles.png"));
@@ -1670,8 +1806,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PSTR lpCmdLine, int nCmdSh
         tile->type = DunTile_StairUp;
         
         temp_mem_end(temp_stair_memory);
-      }
-      else {
+      } else {
         level->stair_up_index = -1;
       }
       
